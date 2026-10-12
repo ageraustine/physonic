@@ -22,15 +22,18 @@ isort>=5.12.0
 pyarrow>=26.0.0
 pandas>=3.0.0
 
-# Future dependencies (commented out until needed)
 # Phase 3B - Video rendering
-# opencv-python>=4.8.0
-# imageio-ffmpeg>=0.4.9
+opencv-python>=4.8.0
+imageio-ffmpeg>=0.4.9
+
+# Phase 4A - RL Environments
+gymnasium>=0.29.0
+librosa>=0.10.0  # Audio feature extraction
+
+# Future dependencies (commented out until needed)
 
 # Phase 3C+ - Advanced features
 # datasets>=2.14.0  # Hugging Face datasets integration
 
-# Phase 4 - RL
-# gymnasium>=0.29.0
+# Phase 4 - RL Training
 # stable-baselines3>=2.1.0
-# librosa>=0.10.0

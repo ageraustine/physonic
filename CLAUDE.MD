@@ -8,7 +8,7 @@ Physonic is a procedural physics-acoustic synthesis pipeline that generates real
 
 **End Goal**: Train robots on complex acoustic perception tasks (sound localization, sound classification, selective response) in simulated commercial environments - data centers, warehouses, supermarkets, etc. Physics fidelity is critical for commercial viability: robots must learn from physically-accurate acoustic training data that transfers to real-world deployment.
 
-**Current Status**: Phase 2C Complete - Core physics-to-audio pipeline with spatial audio (binaural HRTF), multi-object physics, and room acoustics (image-source + Schroeder reverb). Next: LeRobotDataset export and environment templates (Phase 3).
+**Current Status**: Phase 4C Complete - RL environment suite with sound localization, material classification, and selective response tasks, plus full multi-modal dataset generation pipeline with physics-driven audio, binaural spatial audio, room acoustics, MuJoCo-based video rendering, and LeRobotDataset export.
 
 ## Setup: Using Local .claude/ Configuration
 
@@ -51,10 +51,13 @@ claude-local
 - You may need to log in again the first time (credentials are per config dir)
 - Use absolute path (`$PWD/.claude`) not relative (`./.claude`) to avoid issues when Claude Code changes directories
 
-**Test Coverage**: 89 tests passing
-- `tests/test_contact/`: Contact physics & synthesis tests
+**Test Coverage**: 274 tests passing (89 envs, 73 render, 44 spatial, 28 acoustics, 21 export, 19 contact/multi-object)
+- `tests/test_envs/`: 89 RL environment tests (41 localization, 21 classification, 27 selective response)
+- `tests/test_render/`: 73 video rendering tests (camera, encoder, renderer, reconstruction)
 - `tests/test_spatial/`: 44 spatial audio tests (HRTF, ITD/ILD validation)
 - `tests/test_acoustics/`: 28 room acoustics tests (1 skipped for RT60 calibration)
+- `tests/test_export/`: 21 dataset export tests (including 5 video integration tests)
+- `tests/test_contact/`: 19 contact physics & multi-object tests
 
 **Key Features**:
 - ✅ MuJoCo physics simulation (5 kHz)
@@ -63,8 +66,8 @@ claude-local
 - ✅ Binaural spatial audio (HRTF-based)
 - ✅ Room acoustics (17 room templates)
 - ✅ LeRobotDataset export (Phase 3A)
-- ⏳ Video rendering (Phase 3B)
-- ⏳ RL environments (Phase 4)
+- ✅ Video rendering (Phase 3B - standalone CLI + dataset integration)
+- ✅ RL environments (Phase 4A - Sound Localization, Phase 4B - Sound Classification, Phase 4C - Selective Response)
 
 ## Directory Structure
 
@@ -91,9 +94,23 @@ physonic/
 │   ├── episode.py           # Episode dataclass, load_episode() for flat/subdirectory
 │   ├── writer.py            # LeRobotWriter, audio chunking, telemetry downsampling
 │   └── schemas.py           # PyArrow schema definitions
+├── render/                   # Video rendering (Phase 3B)
+│   ├── __init__.py
+│   ├── camera.py            # CameraConfig, CameraPreset, camera modes
+│   ├── renderer.py          # VideoRenderer, MuJoCo offscreen rendering
+│   └── encoder.py           # VideoEncoder, MP4 encoding (H.264)
+├── envs/                     # RL environments (Phase 4A-4C)
+│   ├── __init__.py
+│   ├── base.py              # BaseAcousticEnv (shared functionality)
+│   ├── localization.py      # SoundLocalizationEnv (azimuth prediction)
+│   ├── classification.py    # SoundClassificationEnv (material classification)
+│   ├── selective_response.py # SelectiveResponseEnv (binary respond/ignore)
+│   ├── preprocessing.py     # extract_mel_spectrogram()
+│   └── rewards.py           # Reward functions
 ├── run_demo.py              # Main CLI: single-object scenarios with spatial + reverb
 ├── run_demo_multi.py        # Multi-object scenarios CLI
 ├── export_dataset.py        # Dataset export CLI
+├── render_video.py          # Video rendering CLI (standalone, post-hoc from telemetry)
 └── verify.py                # Output validation & spectrogram generation
 
 tests/
@@ -108,9 +125,18 @@ tests/
 │   └── test_renderer.py
 ├── test_acoustics/          # Room acoustics tests (28 tests)
 │   └── test_room.py
-└── test_export/             # Dataset export tests (13 tests)
-    ├── test_episode.py
-    └── test_writer.py
+├── test_export/             # Dataset export tests (13 tests)
+│   ├── test_episode.py
+│   └── test_writer.py
+├── test_render/             # Video rendering tests (73 tests)
+│   ├── test_camera.py       # Camera configuration & presets (28 tests)
+│   ├── test_encoder.py      # MP4 encoding (17 tests)
+│   ├── test_renderer.py     # MuJoCo rendering (10 tests)
+│   └── test_reconstruction.py # Spec reconstruction (18 tests)
+└── test_envs/               # RL environment tests (89 tests)
+    ├── test_localization.py # Sound localization tests (41 tests)
+    ├── test_classification.py # Sound classification tests (21 tests)
+    └── test_selective_response.py # Selective response tests (27 tests)
 
 assets/
 └── hrtf/
@@ -193,13 +219,182 @@ python3 -m physonic.export_dataset --input outputs/mono --output datasets/test \
 # Custom frame rate and chunk size
 python3 -m physonic.export_dataset --input outputs/spatial --output datasets/physonic_60fps \
   --fps 60 --chunk-size 500
+
+# With video rendering (Phase 3B - in progress)
+python3 -m physonic.export_dataset --input outputs/mono --output datasets/with_video \
+  --include-video --video-cameras multi
 ```
-Converts simulation outputs to Parquet format with synchronized audio chunks (FLAC).
+Converts simulation outputs to Parquet format with synchronized audio chunks (FLAC) and optional video.
+
+### Render Videos (Phase 3B)
+```bash
+# Single front camera
+python3 -m physonic.render_video \
+  --input outputs/test_video \
+  --scenario drop_steel_on_glass \
+  --camera front \
+  --output video.mp4
+
+# Multi-camera (front, side, top)
+python3 -m physonic.render_video \
+  --input outputs/test_video \
+  --scenario drop_steel_on_glass \
+  --camera multi \
+  --output outputs/test_video/videos/
+
+# Tracking camera (follows object)
+python3 -m physonic.render_video \
+  --input outputs/multi \
+  --scenario cascade \
+  --camera tracking \
+  --track-object sphere1 \
+  --output tracking.mp4
+
+# Custom resolution and framerate
+python3 -m physonic.render_video \
+  --input outputs/test_video \
+  --scenario drop_steel_on_glass \
+  --camera front \
+  --width 1280 --height 720 --fps 60 \
+  --output video_hd.mp4
+```
+Post-hoc video rendering from saved telemetry. Reconstructs MuJoCo models and replays physics state frame-by-frame.
+
+### RL Environment for Sound Localization (Phase 4A)
+```python
+from physonic.envs import SoundLocalizationEnv
+
+# Create environment
+env = SoundLocalizationEnv(
+    audio_duration=1.0,              # 1 second audio clips
+    use_mel_spectrogram=True,        # Use mel-spectrogram (vs raw audio)
+    n_mels=64,                       # Number of mel bands
+    material="steel",                # Impact material
+    scenario_type="drop"             # Physics scenario
+)
+
+# Single episode
+obs, info = env.reset()
+print(f"Observation shape: {obs.shape}")  # (64, 87, 2) - mel-spectrogram
+print(f"True azimuth: {info['true_azimuth']:.1f}°")
+
+# Agent predicts azimuth
+predicted_azimuth = 45.0  # Example prediction
+obs, reward, terminated, truncated, info = env.step([predicted_azimuth])
+print(f"Reward: {reward:.3f}")  # Range: [-1, 0]
+print(f"Angular error: {info['angular_error']:.1f}°")
+
+# Training loop with Stable-Baselines3
+from stable_baselines3 import PPO
+
+model = PPO("MlpPolicy", env, verbose=1)
+model.learn(total_timesteps=10000)
+```
+
+### RL Environment for Sound Classification (Phase 4B)
+```python
+from physonic.envs import SoundClassificationEnv
+import numpy as np
+
+# Create environment
+env = SoundClassificationEnv(
+    audio_duration=0.5,               # 0.5s audio for faster testing
+    use_mel_spectrogram=True,         # Use mel-spectrogram features
+    randomize_position=True,          # Vary source distance/azimuth
+    randomize_surface=False           # Fixed surface (easier task)
+)
+
+# Single episode
+obs, info = env.reset()
+print(f"Observation shape: {obs.shape}")     # (64, 44, 2) - mel-spectrogram
+print(f"True material: {info['true_material']}")  # steel, glass, wood, or rubber
+print(f"Action space: {env.action_space}")   # Discrete(4)
+
+# Agent predicts material class
+predicted_class = 1  # Guess: glass
+obs, reward, terminated, truncated, info = env.step(predicted_class)
+print(f"Prediction: {info['predicted_material']}")
+print(f"Correct: {info['correct']}")
+print(f"Reward: {reward}")  # 1.0 if correct, 0.0 if wrong
+
+# Run multiple episodes and track confusion matrix
+for _ in range(100):
+    obs, info = env.reset()
+    action = env.action_space.sample()  # Random guess
+    env.step(action)
+
+# View confusion matrix
+cm = env.get_confusion_matrix()
+print("\nConfusion Matrix:")
+print(cm)
+
+# Per-class accuracy
+for i, material in enumerate(env.MATERIAL_CLASSES):
+    if cm[i].sum() > 0:
+        acc = cm[i, i] / cm[i].sum()
+        print(f"{material}: {100*acc:.1f}%")
+```
+
+### RL Environment for Selective Response (Phase 4C)
+```python
+from physonic.envs import SelectiveResponseEnv
+
+# Create environment
+env = SelectiveResponseEnv(
+    target_materials=["glass"],        # Materials that require response
+    audio_duration=0.5,                # 0.5s audio for faster testing
+    target_probability=0.3,            # 30% targets, 70% distractors
+    reward_tp=1.0,                     # True positive reward
+    reward_tn=0.5,                     # True negative reward
+    reward_fp=-1.0,                    # False positive penalty
+    reward_fn=-2.0                     # False negative penalty (worse)
+)
+
+# Single episode
+obs, info = env.reset()
+print(f"Observation shape: {obs.shape}")        # (64, 44, 2) - mel-spectrogram
+print(f"Is target: {info['is_target']}")        # True if target, False if distractor
+print(f"Material: {info['material']}")          # steel, glass, wood, or rubber
+print(f"Action space: {env.action_space}")      # Discrete(2): 0=IGNORE, 1=RESPOND
+
+# Agent decides whether to respond
+action = 1 if should_respond else 0  # Binary decision
+obs, reward, terminated, truncated, info = env.step(action)
+print(f"Outcome: {info['outcome']}")  # TP, TN, FP, or FN
+print(f"Reward: {reward}")            # Varies by outcome
+
+# Run multiple episodes and evaluate precision/recall
+for _ in range(100):
+    obs, info = env.reset()
+    # Perfect agent strategy
+    action = 1 if info['is_target'] else 0
+    env.step(action)
+
+# Get precision/recall/F1 metrics
+metrics = env.get_metrics()
+print(f"\nMetrics:")
+print(f"Precision: {metrics['precision']:.3f}")
+print(f"Recall:    {metrics['recall']:.3f}")
+print(f"F1 Score:  {metrics['f1']:.3f}")
+print(f"Accuracy:  {metrics['accuracy']:.3f}")
+
+# View 2x2 confusion matrix
+cm = env.get_confusion_matrix()
+print("\nConfusion Matrix [[TN, FP], [FN, TP]]:")
+print(cm)
+
+# PyTorch training example (optional)
+# See scripts/train_selective_response.py for REINFORCE implementation
+```
 
 **Organized directory structure**:
 ```
 outputs/
 ├── mono/              # Mono audio (8 scenarios)
+│   ├── {scenario}.wav
+│   ├── {scenario}_telemetry.npz
+│   ├── {scenario}_events.json
+│   └── videos/        # (optional) rendered videos
 ├── spatial/           # Binaural spatial audio
 ├── reverb/            # Spatial + room acoustics
 ├── multi/             # Multi-object scenarios
@@ -209,6 +404,10 @@ datasets/
 └── physonic_v1/
     ├── data/chunk-000.parquet      # State observations at fps (30 Hz default)
     ├── audio/binaural/*.flac       # Audio chunks (1470 samples @ 30 fps)
+    ├── videos/                     # (optional) synchronized MP4 videos
+    │   ├── episode_00000_front.mp4
+    │   ├── episode_00000_side.mp4
+    │   └── episode_00000_top.mp4
     └── meta/info.json              # Dataset metadata
 ```
 
@@ -354,15 +553,15 @@ Outputs per clip:
 
 5. **HRTF resolution**: 5° angular resolution with nearest-neighbor interpolation. Sufficient for perception training, but VBAP or spherical harmonics would be smoother.
 
-6. **No video rendering yet**: Planned for Phase 3B (multi-camera synchronized with audio).
-
-7. **No LeRobotDataset export**: Planned for Phase 3A.
+6. **Video rendering telemetry-based**: Post-hoc rendering from saved telemetry (not real-time during simulation). Allows flexible camera placement after simulation completes.
 
 ## Code Organization
 
 **Entry points**:
 - `run_demo.py`: Single-object scenarios with spatial + room acoustics
 - `run_demo_multi.py`: Multi-object scenarios (7 predefined scenarios)
+- `export_dataset.py`: Convert outputs to LeRobotDataset format (with optional video rendering)
+- `render_video.py`: Standalone post-hoc video rendering from saved telemetry
 - `verify.py`: Post-hoc validation and spectrogram visualization
 
 **Core modules**:
@@ -382,9 +581,15 @@ Outputs per clip:
 
 **Dataset export**:
 - `export/episode.py`: Episode dataclass, load_episode() for both flat and subdirectory formats
-- `export/writer.py`: LeRobotWriter, audio chunking, telemetry downsampling
-- `export/schemas.py`: PyArrow schema definitions for Parquet
-- `export_dataset.py`: CLI tool for batch export
+- `export/writer.py`: LeRobotWriter, audio chunking, telemetry downsampling, optional video rendering
+- `export/schemas.py`: PyArrow schema definitions for Parquet (including video path columns)
+- `export_dataset.py`: CLI tool for batch export with optional video rendering
+
+**Video rendering**:
+- `render/camera.py`: CameraConfig, CameraPreset, camera mode helpers
+- `render/renderer.py`: VideoRenderer with MuJoCo offscreen rendering, telemetry replay
+- `render/encoder.py`: VideoEncoder with H.264 MP4 encoding, automatic codec fallback
+- `render_video.py`: Standalone CLI tool for post-hoc video rendering
 
 ## Key Constants
 
@@ -435,12 +640,30 @@ Outputs per clip:
 - CLI tool: `python3 -m physonic.export_dataset`
 - 13 unit tests passing
 
-### 🔄 Phase 3: Video Rendering & Environments (Next)
-**3B: Multi-Camera Video Rendering**
-- MuJoCo offscreen rendering (RGB cameras)
-- Camera intrinsics/extrinsics metadata
-- Synchronized with audio timeline
-- MP4 encoding (H.264)
+### ✅ Phase 3B: Multi-Camera Video Rendering (Complete)
+**Weeks 1-2: Core rendering infrastructure**
+- Camera configuration system (CameraConfig, CameraPreset)
+- 4 camera modes: fixed (front/side/top), multi-camera, tracking, egocentric
+- MuJoCo offscreen rendering with mujoco.Renderer
+- Post-hoc rendering from telemetry replay
+- MP4 encoding with H.264 (automatic codec fallback)
+- Standalone CLI tool: `python3 -m physonic.render_video`
+- Spec reconstruction from episode names (reconstruct_scene_spec, reconstruct_multi_scene_spec)
+- 73 tests passing (camera, encoder, renderer, reconstruction)
+
+**Week 3: Dataset export integration**
+- Video rendering integrated into LeRobotWriter
+- Parquet schema updated with video path columns (observation.video.front/side/top)
+- CLI args: `--include-video`, `--video-cameras`, `--video-width`, `--video-height`
+- Output: `videos/episode_{N:05d}_{camera}.mp4`
+- 5 additional integration tests for video rendering
+- End-to-end verification: simulation → video rendering → dataset export
+
+**Week 4: Validation & finalization**
+- End-to-end pipeline tested: 8 episodes, 600 frames, synchronized audio+video
+- Videos: H.264 @ 30fps, synchronized with FLAC audio chunks
+- All 185 tests passing (181 passed, 4 skipped)
+- Documentation updated
 
 **3C: Environment Templates**
 - Warehouse: forklifts, conveyor belts, package drops
@@ -449,20 +672,37 @@ Outputs per clip:
 - Procedural generation: randomized layouts, object placements, acoustic properties
 
 ### Phase 4: RL Environments for Acoustic Perception
-**4A: Sound Source Localization**
-- Gymnasium environment with audio observation space (mel-spectrograms)
-- Continuous azimuth action space or discrete bins
-- Angular error reward: `-|pred - true| / 180`
+**4A: Sound Source Localization** ✅ COMPLETED
+- ✅ Gymnasium environment with audio observation space (mel-spectrograms or raw audio)
+- ✅ Continuous azimuth action space [-180°, 180°]
+- ✅ Angular error reward: `-|pred - true| / 180`
+- ✅ Integration with physics simulation and modal synthesis
+- ✅ Seed reproducibility and Gymnasium API compliance
+- ✅ Comprehensive test suite (41 tests passing)
+- Module: `physonic/envs/` with `SoundLocalizationEnv`, preprocessing, rewards
 
-**4B: Sound Classification**
-- Multi-class discrete action space
-- Binary reward (correct/incorrect)
-- Confusion matrix tracking
+**4B: Sound Classification** ✅ COMPLETED
+- ✅ Gymnasium environment for material classification (steel, glass, wood, rubber)
+- ✅ Discrete action space (4 classes)
+- ✅ Binary reward: +1.0 correct, 0.0 incorrect
+- ✅ Confusion matrix tracking built-in
+- ✅ Position/surface randomization options
+- ✅ CPU-friendly design (no pre-trained models required)
+- ✅ Comprehensive test suite (21 tests passing)
+- ✅ Baseline agents: random (~25% accuracy), heuristic (~27% accuracy)
+- Module: `physonic/envs/classification.py` with `SoundClassificationEnv`
 
-**4C: Selective Response**
-- Binary action space (respond/ignore)
-- False positive/missed detection penalties
-- Precision/Recall/F1 evaluation
+**4C: Selective Response** ✅ COMPLETED
+- ✅ Gymnasium environment for binary decision-making (respond/ignore)
+- ✅ Configurable target materials and distractor materials
+- ✅ Asymmetric reward structure (TP/TN/FP/FN penalties)
+- ✅ Precision/Recall/F1/Accuracy metrics built-in
+- ✅ 2x2 confusion matrix tracking
+- ✅ Target probability control for class imbalance
+- ✅ Comprehensive test suite (27 tests passing)
+- ✅ Baseline agents: random, always-respond, never-respond
+- ✅ PyTorch training example with REINFORCE
+- Module: `physonic/envs/selective_response.py` with `SelectiveResponseEnv`
 
 **4D: Multi-Modal Fusion**
 - Vision + audio observation space

@@ -411,3 +411,161 @@ def extract_events_multi(
         events_by_pair[(name1, name2)] = events
 
     return events_by_pair
+
+
+# Spec Reconstruction for Video Rendering
+# ==========================================
+
+def reconstruct_scene_spec(episode_name: str, duration: float = 2.5) -> SceneSpec:
+    """Reconstruct SceneSpec from episode name.
+
+    Parses episode names like "drop_steel_on_glass" or "slide_wood_on_steel"
+    to reconstruct the original scene specification for video rendering.
+
+    Args:
+        episode_name: Episode name (e.g., "drop_steel_on_glass")
+        duration: Simulation duration in seconds
+
+    Returns:
+        SceneSpec object
+
+    Raises:
+        ValueError: If episode name format is not recognized
+
+    Example:
+        spec = reconstruct_scene_spec("drop_steel_on_glass", duration=2.5)
+        xml = build_xml(spec)
+        model = mujoco.MjModel.from_xml_string(xml)
+    """
+    # Parse episode name: "{kind}_{obj}_on_{surface}"
+    parts = episode_name.split("_on_")
+    if len(parts) != 2:
+        raise ValueError(
+            f"Cannot parse episode name '{episode_name}'. "
+            f"Expected format: 'kind_obj_on_surface' (e.g., 'drop_steel_on_glass')"
+        )
+
+    surface = parts[1]
+
+    # Parse kind and obj from first part
+    left_parts = parts[0].split("_")
+    if len(left_parts) < 2:
+        raise ValueError(
+            f"Cannot parse episode name '{episode_name}'. "
+            f"Expected at least 'kind_obj_on_surface'"
+        )
+
+    kind = left_parts[0]  # "drop" or "slide"
+    obj = "_".join(left_parts[1:])  # Handle multi-word materials
+
+    # Validate kind
+    if kind not in ("drop", "slide"):
+        raise ValueError(f"Unknown kind '{kind}'. Expected 'drop' or 'slide'")
+
+    # Validate materials exist
+    if obj not in MATERIALS:
+        raise ValueError(f"Unknown object material '{obj}'")
+    if surface not in MATERIALS:
+        raise ValueError(f"Unknown surface material '{surface}'")
+
+    return SceneSpec(
+        kind=kind,
+        obj=obj,
+        surface=surface,
+        duration=duration
+    )
+
+
+def reconstruct_multi_scene_spec(
+    episode_name: str,
+    registry: Dict[str, Dict],
+    duration: float = 2.5
+) -> MultiSceneSpec:
+    """Reconstruct MultiSceneSpec from episode name and object registry.
+
+    Args:
+        episode_name: Episode name (e.g., "cascade_steel_3obj")
+        registry: Object registry from saved telemetry
+                 {name: {"mass": float, "material": str, "shape": str, "size": ...}}
+        duration: Simulation duration in seconds
+
+    Returns:
+        MultiSceneSpec object
+
+    Raises:
+        ValueError: If episode name or registry is invalid
+
+    Example:
+        episode = load_episode(episode_dir)
+        spec = reconstruct_multi_scene_spec(
+            episode.name,
+            episode.registry,
+            episode.duration
+        )
+        xml, _ = build_multi_xml(spec)
+        model = mujoco.MjModel.from_xml_string(xml)
+    """
+    if not registry:
+        raise ValueError("Registry is required for multi-object reconstruction")
+
+    # Parse episode name: "{kind}_{surface}_{N}obj"
+    parts = episode_name.split("_")
+    if len(parts) < 3:
+        raise ValueError(
+            f"Cannot parse episode name '{episode_name}'. "
+            f"Expected format: 'kind_surface_Nobj' (e.g., 'cascade_steel_3obj')"
+        )
+
+    # Last part should be "{N}obj"
+    if not parts[-1].endswith("obj"):
+        raise ValueError(
+            f"Episode name '{episode_name}' should end with 'Nobj' "
+            f"(e.g., '3obj')"
+        )
+
+    # Extract kind and surface
+    kind = parts[0]
+    surface = "_".join(parts[1:-1])  # Everything between kind and "Nobj"
+
+    # Validate surface material
+    if surface not in MATERIALS:
+        raise ValueError(f"Unknown surface material '{surface}'")
+
+    # Reconstruct ObjectSpec list from registry
+    objects = []
+    for obj_name, obj_info in registry.items():
+        # Get required fields
+        mass = obj_info.get("mass")
+        material = obj_info.get("material")
+        shape = obj_info.get("shape")
+        size = obj_info.get("size")
+
+        if not all([mass, material, shape, size is not None]):
+            raise ValueError(
+                f"Incomplete registry for object '{obj_name}'. "
+                f"Required: mass, material, shape, size"
+            )
+
+        # Reconstruct initial position from telemetry (use default position)
+        # For video rendering, exact initial position doesn't matter since
+        # we'll be setting positions from telemetry anyway
+        initial_pos = (0.0, 0.0, 0.5)  # Default position
+
+        initial_vel = obj_info.get("initial_vel")
+
+        objects.append(ObjectSpec(
+            name=obj_name,
+            shape=shape,
+            material=material,
+            mass=mass,
+            size=size,
+            initial_pos=initial_pos,
+            initial_vel=initial_vel
+        ))
+
+    return MultiSceneSpec(
+        kind=kind,
+        objects=objects,
+        surface=surface,
+        duration=duration
+    )

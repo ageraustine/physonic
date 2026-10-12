@@ -13,6 +13,12 @@ LEROBOT_SCHEMA = pa.schema([
     # Audio chunk path (FLAC file synchronized with this frame)
     ("observation.audio.binaural", pa.string()),
 
+    # Video paths (optional, Phase 3B)
+    # These are None if video rendering is disabled
+    ("observation.video.front", pa.string()),
+    ("observation.video.side", pa.string()),
+    ("observation.video.top", pa.string()),
+
     # Ground truth labels (JSON strings for flexibility)
     ("ground_truth.events", pa.string()),              # JSON list of events in this frame
     ("ground_truth.materials", pa.string()),           # JSON: {obj: material}

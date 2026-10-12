@@ -266,6 +266,9 @@ def test_writer_parquet_schema(tmp_path):
     expected_columns = [
         "observation.state",
         "observation.audio.binaural",
+        "observation.video.front",
+        "observation.video.side",
+        "observation.video.top",
         "ground_truth.events",
         "ground_truth.materials",
         "ground_truth.sound_sources",
@@ -431,3 +434,280 @@ def test_writer_multiple_episodes(tmp_path):
 
     # Verify all episodes are in episode_names
     assert len(info["episode_names"]) == 3
+
+
+@pytest.mark.integration
+def test_writer_with_video_single_camera(tmp_path):
+    """Test LeRobotWriter with video rendering (single camera)."""
+    from physonic.export.episode import Episode
+
+    sr = 44100
+    duration = 0.5  # Short duration for faster test
+
+    # Mono audio
+    audio = np.random.randn(int(sr * duration))
+
+    # Single-object telemetry
+    physics_sr = 5000
+    n_physics = int(physics_sr * duration)
+
+    telemetry = {
+        "t": np.arange(0, duration, 1/physics_sr),
+        "fn": np.random.randn(n_physics),
+        "vt": np.random.randn(n_physics),
+        "z": np.linspace(1.0, 0.0, n_physics)
+    }
+
+    episode = Episode(
+        name="drop_steel_on_glass",
+        spec=None,
+        audio=audio,
+        telemetry=telemetry,
+        events=[],
+        registry=None,
+        duration=duration,
+        is_spatial=False,
+        is_multi=False
+    )
+
+    # Create writer with video rendering enabled
+    output_dir = tmp_path / "test_video"
+    writer = LeRobotWriter(
+        output_dir=output_dir,
+        fps=30,
+        chunk_size=100,
+        include_video=True,
+        video_cameras="front",
+        video_width=320,  # Smaller for faster test
+        video_height=240
+    )
+
+    # Add episode
+    writer.add_episode(episode)
+    writer.write()
+    writer.finalize()
+
+    # Verify video directory exists
+    video_dir = output_dir / "videos"
+    assert video_dir.exists()
+
+    # Verify video file was created
+    video_files = list(video_dir.glob("*.mp4"))
+    assert len(video_files) == 1  # Single camera
+    assert video_files[0].name == "episode_00000_front.mp4"
+
+    # Verify video file is not empty
+    assert video_files[0].stat().st_size > 0
+
+    # Verify Parquet contains video path
+    parquet_file = list((output_dir / "data").glob("*.parquet"))[0]
+    df = pd.read_parquet(parquet_file)
+
+    # Check video columns exist
+    assert "observation.video.front" in df.columns
+    assert "observation.video.side" in df.columns
+    assert "observation.video.top" in df.columns
+
+    # Front video should have path, others should be None
+    assert df["observation.video.front"].iloc[0] == "videos/episode_00000_front.mp4"
+    assert pd.isna(df["observation.video.side"].iloc[0])
+    assert pd.isna(df["observation.video.top"].iloc[0])
+
+
+@pytest.mark.integration
+def test_writer_with_video_multi_camera(tmp_path):
+    """Test LeRobotWriter with multi-camera video rendering."""
+    from physonic.export.episode import Episode
+
+    sr = 44100
+    duration = 0.5
+
+    audio = np.random.randn(int(sr * duration))
+
+    physics_sr = 5000
+    n_physics = int(physics_sr * duration)
+
+    telemetry = {
+        "t": np.arange(0, duration, 1/physics_sr),
+        "fn": np.random.randn(n_physics),
+        "vt": np.random.randn(n_physics),
+        "z": np.linspace(1.0, 0.0, n_physics)
+    }
+
+    episode = Episode(
+        name="drop_steel_on_glass",
+        spec=None,
+        audio=audio,
+        telemetry=telemetry,
+        events=[],
+        registry=None,
+        duration=duration,
+        is_spatial=False,
+        is_multi=False
+    )
+
+    # Create writer with multi-camera mode
+    output_dir = tmp_path / "test_multicam"
+    writer = LeRobotWriter(
+        output_dir=output_dir,
+        fps=30,
+        chunk_size=100,
+        include_video=True,
+        video_cameras="multi",
+        video_width=320,
+        video_height=240
+    )
+
+    writer.add_episode(episode)
+    writer.write()
+    writer.finalize()
+
+    # Verify all 3 videos were created
+    video_dir = output_dir / "videos"
+    video_files = sorted(video_dir.glob("*.mp4"))
+    assert len(video_files) == 3
+
+    video_names = [v.name for v in video_files]
+    assert "episode_00000_front.mp4" in video_names
+    assert "episode_00000_side.mp4" in video_names
+    assert "episode_00000_top.mp4" in video_names
+
+    # Verify all videos are not empty
+    for video_file in video_files:
+        assert video_file.stat().st_size > 0
+
+    # Verify Parquet contains all video paths
+    parquet_file = list((output_dir / "data").glob("*.parquet"))[0]
+    df = pd.read_parquet(parquet_file)
+
+    assert df["observation.video.front"].iloc[0] == "videos/episode_00000_front.mp4"
+    assert df["observation.video.side"].iloc[0] == "videos/episode_00000_side.mp4"
+    assert df["observation.video.top"].iloc[0] == "videos/episode_00000_top.mp4"
+
+
+@pytest.mark.integration
+def test_writer_video_disabled(tmp_path):
+    """Test that video rendering is skipped when disabled."""
+    from physonic.export.episode import Episode
+
+    sr = 44100
+    duration = 0.5
+
+    audio = np.random.randn(int(sr * duration))
+
+    physics_sr = 5000
+    n_physics = int(physics_sr * duration)
+
+    telemetry = {
+        "t": np.arange(0, duration, 1/physics_sr),
+        "fn": np.random.randn(n_physics),
+        "vt": np.random.randn(n_physics),
+        "z": np.ones(n_physics)
+    }
+
+    episode = Episode(
+        name="test_no_video",
+        spec=None,
+        audio=audio,
+        telemetry=telemetry,
+        events=[],
+        registry=None,
+        duration=duration,
+        is_spatial=False,
+        is_multi=False
+    )
+
+    # Create writer with video disabled (default)
+    output_dir = tmp_path / "test_no_video"
+    writer = LeRobotWriter(
+        output_dir=output_dir,
+        fps=30,
+        include_video=False
+    )
+
+    writer.add_episode(episode)
+    writer.write()
+    writer.finalize()
+
+    # Verify video directory does not exist
+    video_dir = output_dir / "videos"
+    assert not video_dir.exists()
+
+    # Verify Parquet has video columns but they're None
+    parquet_file = list((output_dir / "data").glob("*.parquet"))[0]
+    df = pd.read_parquet(parquet_file)
+
+    assert "observation.video.front" in df.columns
+    assert pd.isna(df["observation.video.front"].iloc[0])
+    assert pd.isna(df["observation.video.side"].iloc[0])
+    assert pd.isna(df["observation.video.top"].iloc[0])
+
+
+@pytest.mark.integration
+def test_writer_video_multiple_episodes(tmp_path):
+    """Test video rendering with multiple episodes."""
+    from physonic.export.episode import Episode
+
+    # Create 2 episodes
+    episodes = []
+    for i in range(2):
+        sr = 44100
+        duration = 0.5
+
+        audio = np.random.randn(int(sr * duration))
+
+        telemetry = {
+            "t": np.arange(0, duration, 1/5000),
+            "fn": np.random.randn(int(5000 * duration)),
+            "vt": np.random.randn(int(5000 * duration)),
+            "z": np.ones(int(5000 * duration))
+        }
+
+        episode = Episode(
+            name=f"drop_steel_on_glass",
+            spec=None,
+            audio=audio,
+            telemetry=telemetry,
+            events=[],
+            registry=None,
+            duration=duration,
+            is_spatial=False,
+            is_multi=False
+        )
+        episodes.append(episode)
+
+    # Export with video
+    output_dir = tmp_path / "test_multi_video"
+    writer = LeRobotWriter(
+        output_dir=output_dir,
+        fps=30,
+        include_video=True,
+        video_cameras="front",
+        video_width=320,
+        video_height=240
+    )
+
+    for ep in episodes:
+        writer.add_episode(ep)
+
+    writer.write()
+    writer.finalize()
+
+    # Verify 2 video files were created
+    video_dir = output_dir / "videos"
+    video_files = sorted(video_dir.glob("*.mp4"))
+    assert len(video_files) == 2
+    assert video_files[0].name == "episode_00000_front.mp4"
+    assert video_files[1].name == "episode_00001_front.mp4"
+
+    # Verify Parquet has correct video paths for each episode
+    parquet_file = list((output_dir / "data").glob("*.parquet"))[0]
+    df = pd.read_parquet(parquet_file)
+
+    # Episode 0 frames should reference episode_00000_front.mp4
+    ep0_frames = df[df["episode_index"] == 0]
+    assert all(ep0_frames["observation.video.front"] == "videos/episode_00000_front.mp4")
+
+    # Episode 1 frames should reference episode_00001_front.mp4
+    ep1_frames = df[df["episode_index"] == 1]
+    assert all(ep1_frames["observation.video.front"] == "videos/episode_00001_front.mp4")

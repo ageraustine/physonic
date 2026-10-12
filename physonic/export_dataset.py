@@ -18,6 +18,14 @@ Usage:
     # Custom Parquet chunk size
     python3 -m physonic.export_dataset --input outputs/ --output datasets/physonic_v1 \\
         --chunk-size 500
+
+    # Include video rendering (Phase 3B)
+    python3 -m physonic.export_dataset --input outputs/ --output datasets/physonic_video_v1 \\
+        --include-video --video-cameras front
+
+    # Multi-camera video (front + side + top)
+    python3 -m physonic.export_dataset --input outputs/ --output datasets/physonic_multicam_v1 \\
+        --include-video --video-cameras multi
 """
 
 import argparse
@@ -136,6 +144,35 @@ def main():
         help="Number of rows per Parquet chunk (default: 1000)"
     )
 
+    # Video rendering options (Phase 3B)
+    ap.add_argument(
+        "--include-video",
+        action="store_true",
+        help="Render videos from telemetry (default: False)"
+    )
+
+    ap.add_argument(
+        "--video-cameras",
+        type=str,
+        default="front",
+        choices=["front", "multi", "tracking", "egocentric"],
+        help="Camera mode for video rendering (default: front)"
+    )
+
+    ap.add_argument(
+        "--video-width",
+        type=int,
+        default=640,
+        help="Video frame width in pixels (default: 640)"
+    )
+
+    ap.add_argument(
+        "--video-height",
+        type=int,
+        default=480,
+        help="Video frame height in pixels (default: 480)"
+    )
+
     args = ap.parse_args()
 
     # Parse inputs
@@ -164,11 +201,21 @@ def main():
     print(f"  Output: {output_dir}")
     print(f"  FPS: {args.fps}")
     print(f"  Chunk size: {args.chunk_size}")
+    if args.include_video:
+        print(f"  Video rendering: enabled")
+        print(f"    Camera mode: {args.video_cameras}")
+        print(f"    Resolution: {args.video_width}x{args.video_height}")
+    else:
+        print(f"  Video rendering: disabled")
 
     writer = LeRobotWriter(
         output_dir=output_dir,
         fps=args.fps,
-        chunk_size=args.chunk_size
+        chunk_size=args.chunk_size,
+        include_video=args.include_video,
+        video_cameras=args.video_cameras,
+        video_width=args.video_width,
+        video_height=args.video_height
     )
 
     # Process each episode

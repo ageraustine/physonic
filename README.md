@@ -21,8 +21,9 @@ Modern robots need to perceive their environment through **multiple modalities**
 - **Robot-ready format**: Export to LeRobotDataset (Parquet) for seamless integration with Hugging Face ecosystem
 
 **Use cases**:
-- Object recognition from impact sounds (material classification, fragility detection)
-- Sound source localization in 3D space
+- **Sound source localization** in 3D space (RL environment included)
+- **Material classification** from impact sounds (RL environment included)
+- **Selective response** to task-relevant sounds (RL environment included)
 - Event detection (collisions, sliding, rolling)
 - Reinforcement learning for contact-rich manipulation
 - Acoustic anomaly detection (identifying mechanical failures)
@@ -37,9 +38,9 @@ Modern robots need to perceive their environment through **multiple modalities**
 | **Acoustic Synthesis** | ✅ | Modal synthesis (impact + friction sounds) |
 | **Spatial Audio** | ✅ | HRTF-based binaural rendering (MIT KEMAR) |
 | **Room Acoustics** | ✅ | Early reflections + late reverb (17 room templates) |
-| **Dataset Export** | ✅ | LeRobotDataset format (Parquet + FLAC audio) |
-| **Video Rendering** | 🚧 | Multi-camera RGB (Phase 3B) |
-| **RL Environments** | 🚧 | Gymnasium integration (Phase 4) |
+| **Dataset Export** | ✅ | LeRobotDataset format (Parquet + FLAC + MP4) |
+| **Video Rendering** | ✅ | Multi-camera RGB (4 camera modes, H.264 encoding) |
+| **RL Environments** | ✅ | Gymnasium integration (3 acoustic perception tasks) |
 
 ---
 
@@ -249,7 +250,94 @@ for i, (az, el, dist) in enumerate(zip(azimuths, elevations, distances)):
     # Ground truth: az, el, dist
 ```
 
-### Example 3: Loading Dataset in Python
+### Example 3: RL Environment for Sound Localization
+```python
+from physonic.envs import SoundLocalizationEnv
+
+# Create environment
+env = SoundLocalizationEnv(
+    audio_duration=1.0,              # 1 second audio clips
+    use_mel_spectrogram=True,        # Use mel-spectrogram (vs raw audio)
+    n_mels=64,                       # Number of mel bands
+    material="steel",                # Impact material
+    hrtf_path="assets/hrtf/test_kemar/"
+)
+
+# Training loop
+for episode in range(100):
+    obs, info = env.reset()
+    print(f"Observation shape: {obs.shape}")  # (64, 87, 2) - mel-spectrogram
+    print(f"True azimuth: {info['true_azimuth']:.1f}°")
+
+    # Agent predicts azimuth
+    predicted_azimuth = 45.0  # Example prediction
+    obs, reward, terminated, truncated, info = env.step([predicted_azimuth])
+    print(f"Reward: {reward:.3f}")  # Range: [-1, 0]
+    print(f"Angular error: {info['angular_error']:.1f}°")
+```
+
+### Example 4: RL Environment for Material Classification
+```python
+from physonic.envs import SoundClassificationEnv
+
+# Create environment
+env = SoundClassificationEnv(
+    audio_duration=0.5,               # 0.5s audio for faster testing
+    use_mel_spectrogram=True,
+    randomize_position=True,          # Vary source distance/azimuth
+    hrtf_path="assets/hrtf/test_kemar/"
+)
+
+# Training loop with confusion matrix
+for episode in range(100):
+    obs, info = env.reset()
+    print(f"True material: {info['true_material']}")  # steel, glass, wood, or rubber
+
+    # Agent predicts material class (0=steel, 1=glass, 2=wood, 3=rubber)
+    predicted_class = env.action_space.sample()
+    obs, reward, terminated, truncated, info = env.step(predicted_class)
+    print(f"Correct: {info['correct']}, Reward: {reward}")  # 1.0 if correct, 0.0 if wrong
+
+# View confusion matrix
+cm = env.get_confusion_matrix()
+print("\nConfusion Matrix (rows=true, cols=predicted):")
+print(cm)
+```
+
+### Example 5: RL Environment for Selective Response
+```python
+from physonic.envs import SelectiveResponseEnv
+
+# Create environment
+env = SelectiveResponseEnv(
+    target_materials=["glass"],        # Materials that require response
+    audio_duration=0.5,
+    target_probability=0.3,            # 30% targets, 70% distractors
+    reward_tp=1.0,                     # True positive reward
+    reward_tn=0.5,                     # True negative reward
+    reward_fp=-1.0,                    # False positive penalty
+    reward_fn=-2.0,                    # False negative penalty (worse)
+    hrtf_path="assets/hrtf/test_kemar/"
+)
+
+# Training loop
+for episode in range(100):
+    obs, info = env.reset()
+    print(f"Is target: {info['is_target']}, Material: {info['material']}")
+
+    # Agent decides: 0=IGNORE, 1=RESPOND
+    action = 1 if should_respond else 0
+    obs, reward, terminated, truncated, info = env.step(action)
+    print(f"Outcome: {info['outcome']}, Reward: {reward}")  # TP, TN, FP, or FN
+
+# Get precision/recall/F1 metrics
+metrics = env.get_metrics()
+print(f"\nPrecision: {metrics['precision']:.3f}")
+print(f"Recall: {metrics['recall']:.3f}")
+print(f"F1 Score: {metrics['f1']:.3f}")
+```
+
+### Example 6: Loading Dataset in Python
 ```python
 import pandas as pd
 import soundfile as sf
@@ -267,7 +355,7 @@ audio, sr = sf.read(f'datasets/physonic_v1/{audio_path}')
 print(f"State: {state}, Audio shape: {audio.shape}, Sample rate: {sr}")
 ```
 
-### Example 4: Hugging Face Datasets Integration
+### Example 7: Hugging Face Datasets Integration
 ```python
 from datasets import load_dataset
 
@@ -431,16 +519,18 @@ writer.finalize()
 pytest -v
 
 # Run specific test modules
-pytest tests/test_contact/ -v           # Physics & synthesis (29 tests)
+pytest tests/test_contact/ -v           # Physics & synthesis (19 tests)
 pytest tests/test_spatial/ -v           # Spatial audio (44 tests)
 pytest tests/test_acoustics/ -v         # Room acoustics (28 tests)
-pytest tests/test_export/ -v            # Dataset export (13 tests)
+pytest tests/test_export/ -v            # Dataset export (21 tests)
+pytest tests/test_render/ -v            # Video rendering (73 tests)
+pytest tests/test_envs/ -v              # RL environments (89 tests)
 
 # Run integration tests only
 pytest -m integration -v
 ```
 
-**Test coverage**: 114 tests covering physics simulation, acoustic synthesis, spatial rendering, room acoustics, and dataset export.
+**Test coverage**: 274 tests covering physics simulation, acoustic synthesis, spatial audio, room acoustics, video rendering, dataset export, and RL environments (sound localization, material classification, selective response).
 
 ---
 
@@ -462,11 +552,21 @@ Benchmarks on MacBook Pro (M1, 16GB RAM):
 
 ## Roadmap
 
-### Phase 3B: Multi-Camera Video Rendering (In Progress)
-- [ ] MuJoCo offscreen RGB rendering
-- [ ] Multi-camera support (front, side, top views)
-- [ ] Camera intrinsics/extrinsics metadata
-- [ ] MP4 encoding (H.264)
+### ✅ Phase 3B: Multi-Camera Video Rendering (Complete)
+- [x] MuJoCo offscreen RGB rendering
+- [x] Multi-camera support (front, side, top views)
+- [x] Tracking camera mode (follows specific object)
+- [x] Egocentric camera mode (attached to object)
+- [x] MP4 encoding with H.264 codec
+- [x] Dataset integration (synchronized video + audio)
+
+### ✅ Phase 4A-4C: RL Environments (Complete)
+- [x] Gymnasium integration with audio observation space
+- [x] Sound localization task (azimuth prediction)
+- [x] Material classification task (4-class discrete action)
+- [x] Selective response task (binary respond/ignore decisions)
+- [x] Precision/Recall/F1 metrics for evaluation
+- [x] Baseline agents and PyTorch training examples
 
 ### Phase 3C: Environment Templates
 - [ ] Warehouse: forklifts, pallets, conveyor belts
@@ -474,12 +574,11 @@ Benchmarks on MacBook Pro (M1, 16GB RAM):
 - [ ] Supermarket: shopping carts, shelving units
 - [ ] Procedural layout generation
 
-### Phase 4: RL Environments
-- [ ] Gymnasium integration
-- [ ] Acoustic localization task
-- [ ] Material classification task
-- [ ] Contact-rich manipulation task
-- [ ] Multi-modal (audio + vision) observation spaces
+### Phase 4D: Multi-Modal Fusion
+- [ ] Vision + audio observation spaces
+- [ ] Sensor dropout and multi-modal robustness
+- [ ] Attention mechanism for modality fusion
+- [ ] Contact-rich manipulation tasks
 
 ### Future Enhancements
 - [ ] Mesh-derived modal analysis (replace analytical modes)

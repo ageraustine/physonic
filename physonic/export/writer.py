@@ -7,9 +7,22 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import soundfile as sf
+import mujoco
 
 from physonic.export.episode import Episode, events_in_frame
 from physonic.export.schemas import LEROBOT_SCHEMA
+from physonic.contact.rig import (
+    build_xml,
+    build_multi_xml,
+    reconstruct_scene_spec,
+    reconstruct_multi_scene_spec
+)
+from physonic.render import (
+    RenderConfig,
+    VideoRenderer,
+    encode_video,
+    get_camera_mode
+)
 
 
 def chunk_audio(audio: np.ndarray, fps: int = 30, sr: int = 44100) -> List[np.ndarray]:
@@ -198,18 +211,37 @@ class LeRobotWriter:
         writer.finalize()
     """
 
-    def __init__(self, output_dir: Path, fps: int = 30, chunk_size: int = 1000):
+    def __init__(
+        self,
+        output_dir: Path,
+        fps: int = 30,
+        chunk_size: int = 1000,
+        include_video: bool = False,
+        video_cameras: str = "front",
+        video_width: int = 640,
+        video_height: int = 480
+    ):
         """Initialize writer.
 
         Args:
             output_dir: Output dataset directory
             fps: Target frame rate for Parquet rows (default 30)
             chunk_size: Number of rows per Parquet chunk (default 1000)
+            include_video: Whether to render videos (default False)
+            video_cameras: Camera mode - "front", "multi", "tracking" (default "front")
+            video_width: Video frame width in pixels (default 640)
+            video_height: Video frame height in pixels (default 480)
         """
         self.output_dir = Path(output_dir)
         self.fps = fps
         self.chunk_size = chunk_size
         self.audio_sr = 44100
+
+        # Video rendering settings
+        self.include_video = include_video
+        self.video_cameras = video_cameras
+        self.video_width = video_width
+        self.video_height = video_height
 
         # Create directory structure
         self.data_dir = self.output_dir / "data"
@@ -219,6 +251,11 @@ class LeRobotWriter:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.audio_dir.mkdir(parents=True, exist_ok=True)
         self.meta_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create video directory if needed
+        if self.include_video:
+            self.video_dir = self.output_dir / "videos"
+            self.video_dir.mkdir(parents=True, exist_ok=True)
 
         # Accumulate rows before writing
         self.rows = []
@@ -233,16 +270,91 @@ class LeRobotWriter:
         self.materials = set()
         self.scenarios = {}
 
+    def _render_episode_videos(self, episode: Episode) -> Dict[str, str]:
+        """Render videos for an episode.
+
+        Args:
+            episode: Episode object
+
+        Returns:
+            Dictionary mapping camera name to relative video path
+            e.g., {"front": "videos/episode_00000_front.mp4"}
+        """
+        if not self.include_video:
+            return {}
+
+        print(f"  Rendering video for episode {self.episode_index}: {episode.name}")
+
+        # Reconstruct MuJoCo model
+        if episode.is_multi:
+            spec = reconstruct_multi_scene_spec(
+                episode.name,
+                episode.registry,
+                episode.duration
+            )
+            xml, registry = build_multi_xml(spec)
+        else:
+            spec = reconstruct_scene_spec(episode.name, episode.duration)
+            xml = build_xml(spec)
+            registry = episode.registry
+
+        model = mujoco.MjModel.from_xml_string(xml)
+
+        # Configure cameras
+        scene_center = (0.0, 0.0, 0.25)
+        track_object = None
+        if episode.is_multi and registry:
+            track_object = list(registry.keys())[0]  # Track first object
+
+        cameras = get_camera_mode(
+            self.video_cameras,
+            scene_center=scene_center,
+            track_object=track_object
+        )
+
+        config = RenderConfig(
+            width=self.video_width,
+            height=self.video_height,
+            fps=self.fps,
+            cameras=cameras
+        )
+
+        # Render frames from telemetry
+        with VideoRenderer(model, config) as renderer:
+            frames_dict = renderer.render_from_telemetry(
+                episode.telemetry,
+                registry=registry,
+                duration=episode.duration
+            )
+
+        # Encode videos and save
+        video_paths = {}
+        for cam_name, frames in frames_dict.items():
+            video_filename = f"episode_{self.episode_index:05d}_{cam_name}.mp4"
+            video_path = self.video_dir / video_filename
+
+            print(f"    Encoding {len(frames)} frames to {cam_name}.mp4...")
+            encode_video(frames, video_path, fps=self.fps)
+
+            # Store relative path
+            video_rel_path = f"videos/{video_filename}"
+            video_paths[cam_name] = video_rel_path
+
+        return video_paths
+
     def add_episode(self, episode: Episode):
         """Process one episode into frames at target fps.
 
         Args:
             episode: Episode object with audio, telemetry, events
         """
-        # 1. Chunk audio into frame-aligned segments
+        # 1. Render videos if enabled
+        video_paths = self._render_episode_videos(episode)
+
+        # 2. Chunk audio into frame-aligned segments
         audio_chunks = chunk_audio(episode.audio, fps=self.fps, sr=self.audio_sr)
 
-        # 2. Downsample telemetry to fps
+        # 3. Downsample telemetry to fps
         state_vectors = downsample_telemetry(episode, fps=self.fps)
 
         # Ensure audio and state have same number of frames
@@ -303,6 +415,9 @@ class LeRobotWriter:
             row = {
                 "observation.state": state_vectors[frame_idx].tolist(),
                 "observation.audio.binaural": audio_rel_path,
+                "observation.video.front": video_paths.get("front"),
+                "observation.video.side": video_paths.get("side"),
+                "observation.video.top": video_paths.get("top"),
                 "ground_truth.events": events_json,
                 "ground_truth.materials": materials_json,
                 "ground_truth.sound_sources": sound_sources_json,

@@ -13,8 +13,9 @@ Modules:
 """
 from physonic.contact.materials import MATERIALS, Material
 from physonic.contact.rig import (
-    SceneSpec, simulate, extract_events, OBJ_MASS, OBJ_SIZE,
-    ObjectSpec, MultiSceneSpec, build_multi_xml, simulate_multi, extract_events_multi
+    SceneSpec, simulate, extract_events, OBJ_MASS, OBJ_SIZE, build_xml,
+    ObjectSpec, MultiSceneSpec, build_multi_xml, simulate_multi, extract_events_multi,
+    reconstruct_scene_spec, reconstruct_multi_scene_spec
 )
 from physonic.contact import modal_synth
 
@@ -24,6 +25,7 @@ __all__ = [
     "SceneSpec",
     "simulate",
     "extract_events",
+    "build_xml",
     "OBJ_MASS",
     "OBJ_SIZE",
     "modal_synth",
@@ -33,4 +35,7 @@ __all__ = [
     "build_multi_xml",
     "simulate_multi",
     "extract_events_multi",
+    # Spec reconstruction (for video rendering)
+    "reconstruct_scene_spec",
+    "reconstruct_multi_scene_spec",
 ]

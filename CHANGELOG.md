@@ -21,6 +21,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025-01-XX
 
 ### Added
+- **Phase 4C: Selective Response RL Environment**
+  - Binary decision-making task (respond/ignore to acoustic events)
+  - Configurable target materials and distractor materials
+  - Asymmetric reward structure (TP/TN/FP/FN penalties)
+  - Precision/Recall/F1/Accuracy metrics built-in
+  - 2x2 confusion matrix tracking
+  - Target probability control for class imbalance
+  - Baseline agents: random, always-respond, never-respond
+  - PyTorch training example with REINFORCE
+  - 27 unit tests
+  - Module: `physonic/envs/selective_response.py`
+
+- **Phase 4B: Sound Classification RL Environment**
+  - Material classification task (steel, glass, wood, rubber)
+  - Discrete 4-class action space
+  - Binary reward: +1.0 correct, 0.0 incorrect
+  - Confusion matrix tracking built-in
+  - Position/surface randomization options
+  - CPU-friendly design (no pre-trained models)
+  - Baseline agents: random (~25%), heuristic (~27%)
+  - 21 unit tests
+  - Module: `physonic/envs/classification.py`
+
+- **Phase 4A: Sound Localization RL Environment**
+  - Azimuth prediction task (continuous action space)
+  - Angular error reward: `-|pred - true| / 180`
+  - Mel-spectrogram or raw audio observations
+  - Integration with physics simulation and modal synthesis
+  - Seed reproducibility and Gymnasium API compliance
+  - 41 unit tests
+  - Module: `physonic/envs/localization.py`
+  - Supporting modules: `preprocessing.py`, `rewards.py`, `base.py`
+
+- **Phase 3B: Multi-Camera Video Rendering**
+  - Camera configuration system (CameraConfig, CameraPreset)
+  - 4 camera modes: fixed (front/side/top), multi-camera, tracking, egocentric
+  - MuJoCo offscreen rendering with mujoco.Renderer
+  - Post-hoc rendering from telemetry replay
+  - MP4 encoding with H.264 (automatic codec fallback)
+  - Standalone CLI tool: `python3 -m physonic.render_video`
+  - Spec reconstruction from episode names
+  - Dataset export integration with synchronized video
+  - Parquet schema updated with video path columns
+  - 73 unit tests (camera: 28, encoder: 17, renderer: 10, reconstruction: 18)
+  - Modules: `physonic/render/camera.py`, `renderer.py`, `encoder.py`
+
 - **Phase 3A: LeRobotDataset Export**
   - Parquet-based dataset format (audio + state + ground truth)
   - Episode loading from flat and subdirectory formats
@@ -84,5 +130,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Version History
 
-- **v1.0.0** - Initial release with Phases 1-3A complete
+- **v1.0.0** - Initial release with Phases 1-4C complete
+  - Full physics-to-audio pipeline
+  - Spatial audio and room acoustics
+  - Multi-camera video rendering
+  - LeRobotDataset export
+  - Three RL environments (localization, classification, selective response)
+  - 274 unit tests
 - **v0.1.0** - Internal alpha (Phase 1 only)
