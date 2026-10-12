@@ -1,0 +1,60 @@
+<?xml version="1.0" ?>
+<mujoco model="static_environment">
+  <option timestep="0.0002" gravity="0 0 -9.81" />
+
+  <worldbody>
+    <!-- Floor -->
+    <geom type="plane" size="30 20 0.1" rgba="0.9 0.9 0.9 1" />
+
+    <!-- Static Objects -->
+
+    <!-- server_rack_1 (server_rack) -->
+    <body name="server_rack_1" pos="2.000 3.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- server_rack_2 (server_rack) -->
+    <body name="server_rack_2" pos="3.500 3.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- server_rack_3 (server_rack) -->
+    <body name="server_rack_3" pos="5.000 3.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- server_rack_4 (server_rack) -->
+    <body name="server_rack_4" pos="6.500 3.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- server_rack_5 (server_rack) -->
+    <body name="server_rack_5" pos="8.000 3.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- cooling_unit_1 (cooling_unit) -->
+    <body name="cooling_unit_1" pos="2.000 8.000 0.750" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.400 0.400 0.750"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- cooling_unit_2 (cooling_unit) -->
+    <body name="cooling_unit_2" pos="10.000 8.000 0.750" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.400 0.400 0.750"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+  </worldbody>
+</mujoco>

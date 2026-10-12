@@ -8,7 +8,7 @@ Physonic is a procedural physics-acoustic synthesis pipeline that generates real
 
 **End Goal**: Train robots on complex acoustic perception tasks (sound localization, sound classification, selective response) in simulated commercial environments - data centers, warehouses, supermarkets, etc. Physics fidelity is critical for commercial viability: robots must learn from physically-accurate acoustic training data that transfers to real-world deployment.
 
-**Current Status**: Phase 4C Complete - RL environment suite with sound localization, material classification, and selective response tasks, plus full multi-modal dataset generation pipeline with physics-driven audio, binaural spatial audio, room acoustics, MuJoCo-based video rendering, and LeRobotDataset export.
+**Current Status**: Phase 3C (Partial) + Phase 4C Complete - RL environment suite with sound localization, material classification, and selective response tasks, plus full multi-modal dataset generation pipeline. Phase 3C adds procedural environment generation with sound synthesis infrastructure (continuous equipment sounds, alert/beep synthesis, acoustic scene mixing) and data center template with layout generation.
 
 ## Setup: Using Local .claude/ Configuration
 
@@ -51,9 +51,10 @@ claude-local
 - You may need to log in again the first time (credentials are per config dir)
 - Use absolute path (`$PWD/.claude`) not relative (`./.claude`) to avoid issues when Claude Code changes directories
 
-**Test Coverage**: 274 tests passing (89 envs, 73 render, 44 spatial, 28 acoustics, 21 export, 19 contact/multi-object)
+**Test Coverage**: 342 tests passing, 4 skipped (89 envs, 73 render, 72 synthesis, 44 spatial, 28 acoustics, 21 export, 19 contact)
 - `tests/test_envs/`: 89 RL environment tests (41 localization, 21 classification, 27 selective response)
 - `tests/test_render/`: 73 video rendering tests (camera, encoder, renderer, reconstruction)
+- `tests/test_synthesis/`: 72 sound synthesis tests (continuous sounds, alerts, mixing) - NEW
 - `tests/test_spatial/`: 44 spatial audio tests (HRTF, ITD/ILD validation)
 - `tests/test_acoustics/`: 28 room acoustics tests (1 skipped for RT60 calibration)
 - `tests/test_export/`: 21 dataset export tests (including 5 video integration tests)
@@ -65,6 +66,8 @@ claude-local
 - ✅ Multi-object scenarios (7 predefined)
 - ✅ Binaural spatial audio (HRTF-based)
 - ✅ Room acoustics (17 room templates)
+- ✅ Sound synthesis (continuous equipment sounds, alerts/beeps, mixing) - Phase 3C
+- ✅ Procedural environment generation (data center template with layout algorithms) - Phase 3C
 - ✅ LeRobotDataset export (Phase 3A)
 - ✅ Video rendering (Phase 3B - standalone CLI + dataset integration)
 - ✅ RL environments (Phase 4A - Sound Localization, Phase 4B - Sound Classification, Phase 4C - Selective Response)
@@ -99,6 +102,16 @@ physonic/
 │   ├── camera.py            # CameraConfig, CameraPreset, camera modes
 │   ├── renderer.py          # VideoRenderer, MuJoCo offscreen rendering
 │   └── encoder.py           # VideoEncoder, MP4 encoding (H.264)
+├── synthesis/                # Sound synthesis (Phase 3C) - NEW
+│   ├── __init__.py
+│   ├── continuous.py        # Continuous equipment sounds (fans, servers, HVAC)
+│   ├── alerts.py            # Alert/beep sounds (alarms, warnings)
+│   └── mixer.py             # Multi-source mixing (impact + continuous + alerts)
+├── environments/             # Environment templates (Phase 3C) - NEW
+│   ├── __init__.py
+│   ├── layout.py            # Grid-based procedural layout generation
+│   ├── objects.py           # Static objects for MuJoCo scenes
+│   └── data_center.py       # Data center environment template
 ├── envs/                     # RL environments (Phase 4A-4C)
 │   ├── __init__.py
 │   ├── base.py              # BaseAcousticEnv (shared functionality)
@@ -107,8 +120,15 @@ physonic/
 │   ├── selective_response.py # SelectiveResponseEnv (binary respond/ignore)
 │   ├── preprocessing.py     # extract_mel_spectrogram()
 │   └── rewards.py           # Reward functions
+├── visualization/            # Demo and visualization tools - NEW
+│   ├── __init__.py
+│   ├── recorder.py          # Episode recording (Gymnasium/HF compatible)
+│   ├── plots.py             # Visualization utilities (waveforms, spectrograms, metrics)
+│   └── (future: viewer.py for interactive playback)
 ├── run_demo.py              # Main CLI: single-object scenarios with spatial + reverb
 ├── run_demo_multi.py        # Multi-object scenarios CLI
+├── demo_rl_env.py           # Interactive RL environment demo - NEW
+├── demo_environment_gen.py  # Environment generation demo - NEW
 ├── export_dataset.py        # Dataset export CLI
 ├── render_video.py          # Video rendering CLI (standalone, post-hoc from telemetry)
 └── verify.py                # Output validation & spectrogram generation
@@ -133,6 +153,10 @@ tests/
 │   ├── test_encoder.py      # MP4 encoding (17 tests)
 │   ├── test_renderer.py     # MuJoCo rendering (10 tests)
 │   └── test_reconstruction.py # Spec reconstruction (18 tests)
+├── test_synthesis/          # Sound synthesis tests (72 tests) - NEW
+│   ├── test_continuous.py  # Continuous sound tests
+│   ├── test_alerts.py      # Alert/beep sound tests
+│   └── test_mixer.py       # Mixing tests
 └── test_envs/               # RL environment tests (89 tests)
     ├── test_localization.py # Sound localization tests (41 tests)
     ├── test_classification.py # Sound classification tests (21 tests)
@@ -665,11 +689,41 @@ Outputs per clip:
 - All 185 tests passing (181 passed, 4 skipped)
 - Documentation updated
 
-**3C: Environment Templates**
-- Warehouse: forklifts, conveyor belts, package drops
-- Data center: server fans, cooling systems, footsteps
-- Supermarket: shopping carts, shelving, checkout beeps
-- Procedural generation: randomized layouts, object placements, acoustic properties
+### ✅ Phase 3C: Environment Templates with Procedural Generation (Partial Complete)
+**Sound Synthesis Infrastructure** (Complete):
+- `physonic/synthesis/continuous.py`: Continuous equipment sounds via additive synthesis
+  - 4 presets: server_hum (120Hz), fan (80Hz), cooling_system (180Hz), hvac (60Hz)
+  - Harmonics + filtered noise + amplitude modulation
+- `physonic/synthesis/alerts.py`: Alert/beep sounds via pure tones + ADSR envelopes
+  - 6 presets: beep, double_beep, alarm, warning, chime, error
+  - Timeline placement utilities for triggered events
+- `physonic/synthesis/mixer.py`: Multi-source acoustic scene mixing
+  - Combines impact + continuous + alert sounds
+  - Automatic normalization and soft limiting
+  - Data center ambient sound generator
+- 72 unit tests passing (all synthesis functionality)
+
+**Layout Generation** (Complete):
+- `physonic/environments/layout.py`: Grid-based procedural layout engine
+  - Collision detection with placement constraints
+  - Row/grid pattern generation algorithms
+  - Occupancy tracking and density limits
+- `physonic/environments/objects.py`: Static object library for MuJoCo
+  - 13 object types (server racks, pallets, shelves, refrigerators, etc.)
+  - MuJoCo XML generation with mocap bodies (non-moving, collision-enabled)
+  - Equipment sound integration
+
+**Data Center Template** (Complete):
+- `physonic/environments/data_center.py`: Procedural data center generation
+  - 3 layout types: hot_aisle (parallel rows), pod (clustered), perimeter (wall-mounted)
+  - 3 scenarios: maintenance (tool sounds + beep), failure (alarms), normal (ambient only)
+  - Generates: static objects + continuous sounds + alert events
+  - Example: 8 racks + 2 cooling units + 7 equipment sounds + scenario-specific alerts
+
+**Remaining** (Deferred):
+- Warehouse environment template (shelving, forklifts, package drops)
+- Supermarket environment template (carts, checkout, refrigerator hum)
+- CLI integration for environment generation
 
 ### Phase 4: RL Environments for Acoustic Perception
 **4A: Sound Source Localization** ✅ COMPLETED
@@ -708,6 +762,48 @@ Outputs per clip:
 - Vision + audio observation space
 - Robust perception with sensor dropout
 - Attention mechanism analysis
+
+### ✅ Demo and Visualization Tools (Complete)
+**Episode Recording Infrastructure**:
+- `physonic/visualization/recorder.py`: Episode recording compatible with Gymnasium VideoRecorder API
+  - EpisodeRecorder class for saving/loading RL episodes
+  - Saves: observations (NPY), actions, rewards, infos (JSON), audio (WAV)
+  - Export stubs for HuggingFace datasets and Isaac Sim USD format (future)
+  - JSON metadata with environment info and episode statistics
+
+**Visualization Utilities**:
+- `physonic/visualization/plots.py`: Comprehensive plotting functions
+  - `plot_waveform()`: Audio waveform visualization (mono/stereo)
+  - `plot_spectrogram()`: STFT spectrogram with dB scale
+  - `plot_mel_spectrogram()`: Mel-spectrogram from RL observations
+  - `plot_metrics()`: Episode rewards with rolling average
+  - `plot_confusion_matrix()`: Normalized confusion matrix with percentages
+  - `plot_episode_summary()`: Multi-panel overview (observation + rewards + actions + metrics)
+
+**Interactive Demo Scripts**:
+- `demo_rl_env.py`: Interactive demo for all three RL environments
+  - Supports localization, classification, selective response
+  - Random agent and perfect agent (ground truth cheating)
+  - Automatic episode recording and visualization generation
+  - Usage: `python3 demo_rl_env.py --env localization --episodes 10 --visualize`
+
+- `demo_environment_gen.py`: Interactive demo for procedural environment generation
+  - Data center scenarios (maintenance, failure, normal)
+  - Layout types (hot_aisle, pod, perimeter)
+  - Outputs: MuJoCo XML, acoustic audio, layout visualization, JSON summary
+  - Usage: `python3 demo_environment_gen.py --scenario maintenance --layout hot_aisle --visualize`
+
+- `view_environment.py`: 3D environment viewer
+  - Multi-angle static rendering (Front, Top, Side, 3D View)
+  - Interactive real-time viewer support (requires mjpython on macOS)
+  - View existing XML scenes or generate environments on-the-fly
+  - MuJoCo offscreen rendering at 480x480 resolution
+  - Usage: `python3 view_environment.py --xml scene.xml` or `python3 view_environment.py --scenario maintenance --layout hot_aisle`
+
+**Compatibility**:
+- ✅ Gymnasium API (VideoRecorder pattern)
+- 🔄 HuggingFace datasets (export stub ready)
+- 🔄 Isaac Sim USD (export stub ready for future integration)
 
 ### Technical Debt to Address
 - Fine-tune Schroeder RT60 decay calibration

@@ -36,6 +36,8 @@ Modern robots need to perceive their environment through **multiple modalities**
 |---------|--------|-------------|
 | **Physics Simulation** | ✅ | MuJoCo 5kHz contact dynamics (single + multi-object) |
 | **Acoustic Synthesis** | ✅ | Modal synthesis (impact + friction sounds) |
+| **Sound Synthesis** | ✅ | Continuous equipment sounds + alert/beep synthesis |
+| **Procedural Environments** | 🚧 | Data center template (warehouse, supermarket deferred) |
 | **Spatial Audio** | ✅ | HRTF-based binaural rendering (MIT KEMAR) |
 | **Room Acoustics** | ✅ | Early reflections + late reverb (17 room templates) |
 | **Dataset Export** | ✅ | LeRobotDataset format (Parquet + FLAC + MP4) |
@@ -250,7 +252,52 @@ for i, (az, el, dist) in enumerate(zip(azimuths, elevations, distances)):
     # Ground truth: az, el, dist
 ```
 
-### Example 3: RL Environment for Sound Localization
+### Example 3: Procedural Environment Generation with Sound Synthesis (Phase 3C)
+Generate realistic commercial environments with equipment sounds and alert events:
+
+```python
+from physonic.environments.data_center import scenario_data_center_maintenance
+from physonic.environments.objects import build_scene_with_static_objects
+from physonic.synthesis.mixer import mix_acoustic_scene
+
+# Generate data center environment (hot aisle layout)
+static_objects, continuous_sounds, alert_sounds = scenario_data_center_maintenance(
+    room_size=(20, 15, 3),
+    seed=42
+)
+
+print(f"Generated {len(static_objects)} objects:")
+print(f"  - Server racks: {sum(1 for o in static_objects if 'rack' in o.name)}")
+print(f"  - Cooling units: {sum(1 for o in static_objects if 'cooling' in o.name)}")
+print(f"  - Equipment sounds: {len(continuous_sounds)}")
+print(f"  - Alert events: {len(alert_sounds)}")
+
+# Generate MuJoCo scene XML
+xml = build_scene_with_static_objects(static_objects, floor_size=(20, 15))
+with open("data_center_scene.xml", "w") as f:
+    f.write(xml)
+
+# Mix acoustic scene (equipment sounds + maintenance beep)
+acoustic_scene = mix_acoustic_scene(
+    impact_sounds=[],  # No impacts in this example
+    continuous_sounds=continuous_sounds,
+    alert_sounds=alert_sounds,
+    duration=5.0,
+    continuous_level=0.3,  # Background level
+    alert_level=0.6,       # Alert level
+)
+
+# Save audio
+import soundfile as sf
+sf.write("data_center_ambient.wav", acoustic_scene, 44100)
+```
+
+**Available environment configurations:**
+- **Data center**: 3 layouts (hot_aisle, pod, perimeter) × 3 scenarios (maintenance, failure, normal)
+- **Sound synthesis**: Continuous equipment sounds (server_hum, fan, cooling_system, hvac)
+- **Alert sounds**: 6 presets (beep, double_beep, alarm, warning, chime, error)
+
+### Example 4: RL Environment for Sound Localization
 ```python
 from physonic.envs import SoundLocalizationEnv
 
@@ -276,7 +323,7 @@ for episode in range(100):
     print(f"Angular error: {info['angular_error']:.1f}°")
 ```
 
-### Example 4: RL Environment for Material Classification
+### Example 5: RL Environment for Material Classification
 ```python
 from physonic.envs import SoundClassificationEnv
 
@@ -304,7 +351,7 @@ print("\nConfusion Matrix (rows=true, cols=predicted):")
 print(cm)
 ```
 
-### Example 5: RL Environment for Selective Response
+### Example 6: RL Environment for Selective Response
 ```python
 from physonic.envs import SelectiveResponseEnv
 
@@ -368,6 +415,233 @@ dataset.push_to_hub('ageraustine/physonic-warehouse-v1')
 # Later, load from Hub
 dataset = load_dataset('ageraustine/physonic-warehouse-v1')
 ```
+
+### Example 8: Interactive RL Environment Demo
+Run the interactive demo to test RL environments with random or perfect agents:
+
+```bash
+# Test sound localization with perfect agent (ground truth cheating)
+python3 scripts/demos/demo_rl_env.py --env localization --agent perfect --episodes 10
+
+# Test material classification with visualization
+python3 scripts/demos/demo_rl_env.py --env classification --agent random --episodes 20 --visualize
+
+# Test selective response (glass target detection)
+python3 scripts/demos/demo_rl_env.py --env selective --agent perfect --episodes 15 --visualize
+```
+
+**Output**: Episode recordings in `outputs/demo_recordings/` with:
+- Audio files (.wav)
+- Observations (.npy arrays)
+- Episode metadata (JSON)
+- Visualizations (rewards plot, confusion matrix, episode summary)
+
+**Supported environments**:
+- `localization`: Predict azimuth angle from binaural audio
+- `classification`: Classify material from impact sound (4 classes)
+- `selective`: Binary decision (respond to glass, ignore others)
+
+**Agent types**:
+- `random`: Random action selection (baseline)
+- `perfect`: Cheats using ground truth (upper bound performance)
+
+### Example 9: Procedural Environment Generation Demo
+Generate realistic commercial environments with acoustic signatures:
+
+```bash
+# Generate data center maintenance scenario with visualization
+python3 scripts/demos/demo_environment_gen.py \
+  --env data_center \
+  --scenario maintenance \
+  --layout hot_aisle \
+  --num-racks 8 \
+  --visualize \
+  --seed 42
+
+# Generate data center equipment failure scenario
+python3 scripts/demos/demo_environment_gen.py \
+  --env data_center \
+  --scenario failure \
+  --layout pod \
+  --num-racks 12 \
+  --visualize
+```
+
+**Output**: Environment files in `outputs/demo_environments/` with:
+- MuJoCo scene XML (static objects: racks, cooling units)
+- Acoustic scene audio (equipment sounds + alerts + events)
+- Layout visualization (top-down view PNG)
+- JSON summary (object counts, sound specs)
+
+**Available scenarios**:
+- `maintenance`: Technician drops tool (impact + beep alert)
+- `failure`: Equipment failure (impact + alarm)
+- `normal`: Just background equipment sounds
+
+**Layout types**:
+- `hot_aisle`: Parallel rows of server racks (cooling optimization)
+- `pod`: Clustered rack groups
+- `perimeter`: Wall-mounted racks with central open space
+
+### Example 10: 3D Environment Viewer
+Visualize generated 3D environments with multi-angle rendering:
+
+```bash
+# View existing scene (creates 4-panel view: Front, Top, Side, 3D)
+python3 scripts/visualization/view_environment.py --xml outputs/demo_environments/data_center_maintenance_42.xml
+
+# Generate and view on-the-fly
+python3 scripts/visualization/view_environment.py --scenario maintenance --layout hot_aisle
+
+# Custom configuration
+python3 scripts/visualization/view_environment.py --scenario failure --layout pod --num-racks 12 --seed 99
+
+# Interactive real-time viewer (requires mjpython on macOS, works on Linux)
+mjpython scripts/visualization/view_environment.py --xml outputs/demo_environments/data_center_maintenance_42.xml --interactive
+```
+
+**Output**: Multi-angle 3D visualization showing:
+- Server racks at proper 3D positions (height, width, depth)
+- Cooling units placed in room
+- Floor plane and room boundaries
+- 4 camera angles: Front (0°), Top (bird's eye), Side (90°), 3D (45° perspective)
+
+**Features**:
+- Static multi-angle rendering (default on macOS)
+- Interactive real-time viewer with mouse controls (Linux or mjpython)
+- Automatic camera positioning based on room size
+- Saves to PNG file for documentation
+
+### Example 11: PPO Agent Training for Data Center Navigation
+Train a PPO agent to navigate complex data centers using acoustic perception:
+
+```bash
+# Quick test run (2000 timesteps, 1 environment)
+python3 scripts/training/train_ppo_data_center.py \
+  --total-timesteps 2000 \
+  --n-envs 1 \
+  --eval-freq 1000
+
+# Full training (1M timesteps, 4 parallel environments)
+python3 scripts/training/train_ppo_data_center.py \
+  --total-timesteps 1000000 \
+  --n-envs 4 \
+  --eval-freq 10000 \
+  --save-freq 50000 \
+  --output-dir outputs/ppo_datacenter
+
+# Training with custom hyperparameters
+python3 scripts/training/train_ppo_data_center.py \
+  --total-timesteps 5000000 \
+  --n-envs 8 \
+  --learning-rate 0.0001 \
+  --n-steps 4096 \
+  --batch-size 128 \
+  --device cuda
+
+# View training progress with TensorBoard
+tensorboard --logdir outputs/ppo_datacenter/logs
+```
+
+**Output**: Trained models in `outputs/ppo_datacenter/models/` with:
+- `best_model.zip` - Model with highest eval reward
+- `ppo_datacenter_XXXX_steps.zip` - Checkpoint every 50k steps
+- `ppo_datacenter_final.zip` - Final model after training
+- TensorBoard logs for monitoring training curves
+
+**Environment Details**:
+- **Observation**: Dict space with mel-spectrogram (64×50×2) + robot state (6,)
+- **Action**: Continuous 2D velocity control (vx, vy) ∈ [-1, 1] m/s
+- **Reward**: Distance penalty (-0.01 × distance) + goal bonus (+10) + collision penalty (-5)
+- **Episode**: Max 500 steps @ 10Hz (50 seconds), terminates when goal reached or collision
+- **Environment**: 30m × 25m data center with 24 server racks, 4 cooling units, 2 moving robots
+
+**Training Results** (2000 timesteps test):
+- Mean reward improved: -50.4 → -36.5 (28% improvement)
+- Episode length: 500 steps (maxed out, agent hasn't learned to reach goal yet)
+- FPS: ~8 on CPU (M1 MacBook Pro)
+
+**Evaluation**:
+```bash
+# Evaluate trained agent
+python3 scripts/training/train_ppo_data_center.py \
+  --eval-only \
+  --load outputs/ppo_datacenter/models/best_model.zip \
+  --n-eval-episodes 20
+```
+
+**Layout Variants**:
+For training diversity, use different data center layouts:
+```python
+from scripts.demos.generate_data_center_layouts import generate_data_center_hot_aisle, generate_data_center_pod
+
+# Hot-aisle layout (structured rows)
+objs, sounds, grid = generate_data_center_hot_aisle(room_size=(30, 25, 4), num_racks=24, seed=42)
+
+# Pod layout (clustered groups)
+objs, sounds, grid = generate_data_center_pod(room_size=(30, 25, 4), num_pods=4, seed=42)
+```
+
+---
+
+## Project Structure
+
+```
+physonic_mvp/
+├── physonic/              # Core library
+│   ├── contact/           # Physics simulation & modal synthesis
+│   ├── spatial/           # HRTF binaural rendering
+│   ├── acoustics/         # Room acoustics (reverb, reflections)
+│   ├── synthesis/         # Sound synthesis (continuous, alerts)
+│   ├── environments/      # Procedural environment generation
+│   │   ├── layout.py      # Grid-based layout system
+│   │   ├── objects.py     # Static object library
+│   │   ├── dynamic_scene.py  # Dynamic physics scenes
+│   │   └── moving_sound_tracker.py  # Moving sound sources
+│   ├── envs/              # Gymnasium RL environments
+│   │   ├── sound_localization.py
+│   │   ├── sound_classification.py
+│   │   ├── selective_response.py
+│   │   └── data_center_nav.py  # PPO navigation environment
+│   ├── export/            # LeRobotDataset export
+│   └── render/            # Video rendering
+├── scripts/               # Executable scripts (organized)
+│   ├── demos/             # Demo scripts
+│   │   ├── demo_environment_gen.py
+│   │   ├── demo_rl_env.py
+│   │   └── generate_data_center_layouts.py
+│   ├── training/          # Training scripts
+│   │   ├── train_ppo_data_center.py
+│   │   └── train_selective_response.py
+│   ├── baselines/         # Baseline agents
+│   │   ├── baseline_random.py
+│   │   ├── baseline_heuristic.py
+│   │   └── baseline_selective_*.py
+│   ├── visualization/     # Visualization tools
+│   │   └── view_environment.py
+│   └── utils/             # Utility scripts
+│       ├── setup_hrtf_test.py
+│       └── organize_outputs.py
+├── tests/                 # Test suite (274 tests)
+│   ├── test_contact/
+│   ├── test_spatial/
+│   ├── test_acoustics/
+│   ├── test_envs/
+│   ├── test_export/
+│   └── test_render/
+├── assets/                # Static assets
+│   └── hrtf/              # HRTF datasets
+├── outputs/               # Generated outputs
+│   ├── mono/              # Mono audio scenarios
+│   ├── spatial/           # Binaural spatial audio
+│   ├── ppo_datacenter/    # PPO training outputs
+│   └── demo_*/            # Demo outputs
+├── datasets/              # Exported datasets
+├── requirements.txt       # Python dependencies
+└── README.md              # This file
+```
+
+**Important**: All Python files should be in `physonic/` (library code) or `scripts/` (executable scripts). No Python files at project root.
 
 ---
 
@@ -568,11 +842,13 @@ Benchmarks on MacBook Pro (M1, 16GB RAM):
 - [x] Precision/Recall/F1 metrics for evaluation
 - [x] Baseline agents and PyTorch training examples
 
-### Phase 3C: Environment Templates
-- [ ] Warehouse: forklifts, pallets, conveyor belts
-- [ ] Data center: server racks, cooling systems
-- [ ] Supermarket: shopping carts, shelving units
-- [ ] Procedural layout generation
+### ✅ Phase 3C: Environment Templates (Partial)
+- [x] Data center: dynamic physics objects, moving robots, spatial audio
+- [x] Procedural layout generation (hot-aisle, pod layouts)
+- [x] Grid-based collision detection and placement
+- [x] PPO agent for navigation with acoustic perception
+- [ ] Warehouse: forklifts, pallets, conveyor belts (deferred)
+- [ ] Supermarket: shopping carts, shelving units (deferred)
 
 ### Phase 4D: Multi-Modal Fusion
 - [ ] Vision + audio observation spaces

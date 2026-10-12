@@ -1,0 +1,81 @@
+<?xml version="1.0" ?>
+<mujoco model="static_environment">
+  <option timestep="0.0002" gravity="0 0 -9.81" />
+
+  <worldbody>
+    <!-- Floor -->
+    <geom type="plane" size="20 15 0.1" rgba="0.9 0.9 0.9 1" />
+
+    <!-- Static Objects -->
+
+    <!-- server_rack_1 (server_rack) -->
+    <body name="server_rack_1" pos="2.000 2.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- server_rack_2 (server_rack) -->
+    <body name="server_rack_2" pos="4.200 2.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- server_rack_3 (server_rack) -->
+    <body name="server_rack_3" pos="6.400 2.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- server_rack_4 (server_rack) -->
+    <body name="server_rack_4" pos="8.600 2.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- server_rack_5 (server_rack) -->
+    <body name="server_rack_5" pos="9.700 2.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- server_rack_6 (server_rack) -->
+    <body name="server_rack_6" pos="11.900 2.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- server_rack_7 (server_rack) -->
+    <body name="server_rack_7" pos="14.100 2.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- server_rack_8 (server_rack) -->
+    <body name="server_rack_8" pos="15.200 2.000 1.000" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- cooling_unit_1 (cooling_unit) -->
+    <body name="cooling_unit_1" pos="4.000 12.000 0.750" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.400 0.400 0.750"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+
+    <!-- cooling_unit_2 (cooling_unit) -->
+    <body name="cooling_unit_2" pos="16.000 12.000 0.750" quat="1.000000 0 0 0.000000" mocap="true">
+      <geom type="box" size="0.400 0.400 0.750"
+            rgba="0.7 0.7 0.8 1" mass="1000" />
+    </body>
+
+  </worldbody>
+</mujoco>

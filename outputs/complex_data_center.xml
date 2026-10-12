@@ -1,0 +1,318 @@
+<?xml version="1.0" ?>
+<mujoco model="complex_data_center">
+  <option timestep="0.001" gravity="0 0 -9.81" />
+
+  <!-- Visual settings -->
+  <visual>
+    <headlight ambient="0.8 0.8 0.8" diffuse="0.8 0.8 0.8" specular="0.5 0.5 0.5" />
+    <global offwidth="640" offheight="480" />
+  </visual>
+
+  <!-- Asset definitions -->
+  <asset>
+    <texture name="texplane" type="2d" builtin="checker" rgb1="0.4 0.4 0.5" rgb2="0.3 0.3 0.4" width="256" height="256" />
+    <material name="matplane" reflectance="0.2" texture="texplane" texrepeat="3 3" />
+  </asset>
+
+  <worldbody>
+    <!-- Lighting -->
+    <light directional="true" diffuse="1.2 1.2 1.2" specular="0.3 0.3 0.3" pos="0 0 6" dir="0 0 -1" castshadow="false" />
+    <light directional="true" diffuse="0.6 0.6 0.6" specular="0.1 0.1 0.1" pos="15 15 6" dir="-1 -1 -1" castshadow="false" />
+
+    <!-- Floor -->
+    <geom type="plane" size="30 25 0.1" material="matplane" />
+
+    <!-- Walls for containment -->
+    <geom type="box" pos="30 12.5 1.5" size="0.1 12.5 1.5" rgba="0.6 0.6 0.7 0.3" />
+    <geom type="box" pos="0 12.5 1.5" size="0.1 12.5 1.5" rgba="0.6 0.6 0.7 0.3" />
+    <geom type="box" pos="15.0 25 1.5" size="15.0 0.1 1.5" rgba="0.6 0.6 0.7 0.3" />
+    <geom type="box" pos="15.0 0 1.5" size="15.0 0.1 1.5" rgba="0.6 0.6 0.7 0.3" />
+
+    <!-- Dynamic Objects -->
+
+    <!-- rack_1 (server_rack) - DYNAMIC -->
+    <body name="rack_1" pos="3.000 3.000 1.055" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_2 (server_rack) - DYNAMIC -->
+    <body name="rack_2" pos="5.200 3.000 0.988" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_3 (server_rack) - DYNAMIC -->
+    <body name="rack_3" pos="7.400 3.000 0.919" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_4 (server_rack) - DYNAMIC -->
+    <body name="rack_4" pos="9.600 3.000 1.057" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_5 (server_rack) - DYNAMIC -->
+    <body name="rack_5" pos="11.800 3.000 0.926" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_6 (server_rack) - DYNAMIC -->
+    <body name="rack_6" pos="14.000 3.000 1.085" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_7 (server_rack) - DYNAMIC -->
+    <body name="rack_7" pos="3.000 6.000 0.989" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_8 (server_rack) - DYNAMIC -->
+    <body name="rack_8" pos="5.200 6.000 0.945" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_9 (server_rack) - DYNAMIC -->
+    <body name="rack_9" pos="7.400 6.000 1.066" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_10 (server_rack) - DYNAMIC -->
+    <body name="rack_10" pos="9.600 6.000 0.971" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_11 (server_rack) - DYNAMIC -->
+    <body name="rack_11" pos="11.800 6.000 1.094" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_12 (server_rack) - DYNAMIC -->
+    <body name="rack_12" pos="14.000 6.000 0.939" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_13 (server_rack) - DYNAMIC -->
+    <body name="rack_13" pos="3.000 9.000 0.931" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_14 (server_rack) - DYNAMIC -->
+    <body name="rack_14" pos="5.200 9.000 1.037" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_15 (server_rack) - DYNAMIC -->
+    <body name="rack_15" pos="7.400 9.000 0.965" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_16 (server_rack) - DYNAMIC -->
+    <body name="rack_16" pos="9.600 9.000 0.938" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_17 (server_rack) - DYNAMIC -->
+    <body name="rack_17" pos="11.800 9.000 0.926" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_18 (server_rack) - DYNAMIC -->
+    <body name="rack_18" pos="14.000 9.000 1.034" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_19 (server_rack) - DYNAMIC -->
+    <body name="rack_19" pos="3.000 12.000 1.040" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_20 (server_rack) - DYNAMIC -->
+    <body name="rack_20" pos="5.200 12.000 0.962" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_21 (server_rack) - DYNAMIC -->
+    <body name="rack_21" pos="7.400 12.000 0.977" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_22 (server_rack) - DYNAMIC -->
+    <body name="rack_22" pos="9.600 12.000 0.928" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_23 (server_rack) - DYNAMIC -->
+    <body name="rack_23" pos="11.800 12.000 0.940" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- rack_24 (server_rack) - DYNAMIC -->
+    <body name="rack_24" pos="14.000 12.000 1.033" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="200.00" diaginertia="83.333 72.667 22.667" />
+      <geom type="box" size="0.300 0.500 1.000"
+            rgba="0.2 0.4 0.8 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- cooling_1 (cooling_unit) - DYNAMIC -->
+    <body name="cooling_1" pos="5.000 22.000 0.750" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="300.00" diaginertia="72.250 72.250 32.000" />
+      <geom type="box" size="0.400 0.400 0.750"
+            rgba="0.8 0.3 0.2 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- cooling_2 (cooling_unit) - DYNAMIC -->
+    <body name="cooling_2" pos="15.000 22.000 0.750" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="300.00" diaginertia="72.250 72.250 32.000" />
+      <geom type="box" size="0.400 0.400 0.750"
+            rgba="0.8 0.3 0.2 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- cooling_3 (cooling_unit) - DYNAMIC -->
+    <body name="cooling_3" pos="25.000 22.000 0.750" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="300.00" diaginertia="72.250 72.250 32.000" />
+      <geom type="box" size="0.400 0.400 0.750"
+            rgba="0.8 0.3 0.2 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+
+    <!-- cooling_4 (cooling_unit) - DYNAMIC -->
+    <body name="cooling_4" pos="10.000 2.000 0.750" quat="1.000000 0 0 0.000000">
+      <inertial pos="0 0 0" mass="300.00" diaginertia="72.250 72.250 32.000" />
+      <geom type="box" size="0.400 0.400 0.750"
+            rgba="0.8 0.3 0.2 1" friction="0.8 0.005 0.0001" />
+      <freejoint/>
+    </body>
+
+    <!-- Moving Robots -->
+
+    <!-- robot_1 - MOVING ROBOT -->
+    <body name="robot_1" pos="13.932 13.944 0.150">
+      <inertial pos="0 0 0" mass="50.00" diaginertia="1.417 1.417 2.083" />
+      <geom type="box" size="0.250 0.250 0.150"
+            rgba="0.3 0.8 0.3 1" friction="0.5 0.005 0.0001" />
+      <joint name="robot_1_slide_x" type="slide" axis="1 0 0" limited="false" damping="10" />
+      <joint name="robot_1_slide_y" type="slide" axis="0 1 0" limited="false" damping="10" />
+      <joint name="robot_1_hinge" type="hinge" axis="0 0 1" limited="false" damping="1" />
+    </body>
+
+
+    <!-- robot_2 - MOVING ROBOT -->
+    <body name="robot_2" pos="19.378 11.893 0.150">
+      <inertial pos="0 0 0" mass="50.00" diaginertia="1.417 1.417 2.083" />
+      <geom type="box" size="0.250 0.250 0.150"
+            rgba="0.3 0.8 0.3 1" friction="0.5 0.005 0.0001" />
+      <joint name="robot_2_slide_x" type="slide" axis="1 0 0" limited="false" damping="10" />
+      <joint name="robot_2_slide_y" type="slide" axis="0 1 0" limited="false" damping="10" />
+      <joint name="robot_2_hinge" type="hinge" axis="0 0 1" limited="false" damping="1" />
+    </body>
+
+  </worldbody>
+
+  <!-- Actuators for robot movement -->
+  <actuator>
+    <motor joint="robot_1_slide_x" gear="100" ctrllimited="true" ctrlrange="-10 10" />
+    <motor joint="robot_1_slide_y" gear="100" ctrllimited="true" ctrlrange="-10 10" />
+    <motor joint="robot_1_hinge" gear="20" ctrllimited="true" ctrlrange="-5 5" />
+    <motor joint="robot_2_slide_x" gear="100" ctrllimited="true" ctrlrange="-10 10" />
+    <motor joint="robot_2_slide_y" gear="100" ctrllimited="true" ctrlrange="-10 10" />
+    <motor joint="robot_2_hinge" gear="20" ctrllimited="true" ctrlrange="-5 5" />
+  </actuator>
+</mujoco>

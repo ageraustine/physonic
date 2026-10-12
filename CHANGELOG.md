@@ -21,6 +21,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025-01-XX
 
 ### Added
+- **Phase 3C: Environment Templates with Procedural Generation** (Partial)
+  - Sound synthesis infrastructure for non-impact sounds:
+    - `physonic/synthesis/continuous.py`: Additive synthesis for equipment sounds
+      - 4 presets: server_hum (120Hz), fan (80Hz), cooling_system (180Hz), hvac (60Hz)
+      - Harmonics + filtered noise + amplitude modulation
+    - `physonic/synthesis/alerts.py`: Alert/beep synthesis with ADSR envelopes
+      - 6 presets: beep, double_beep, alarm, warning, chime, error
+      - Timeline placement utilities
+    - `physonic/synthesis/mixer.py`: Multi-source acoustic scene mixing
+      - Combines impact + continuous + alert sounds
+      - Automatic normalization and soft limiting
+  - Layout generation and static objects:
+    - `physonic/environments/layout.py`: Grid-based procedural layout engine
+      - Collision detection, placement constraints, occupancy tracking
+      - Row/grid pattern generation algorithms
+    - `physonic/environments/objects.py`: Static object library for MuJoCo scenes
+      - 13 object types (server racks, pallets, shelves, refrigerators, etc.)
+      - MuJoCo XML generation with mocap bodies
+  - Data center environment template:
+    - `physonic/environments/data_center.py`: Procedural generation
+      - 3 layout types: hot_aisle, pod, perimeter
+      - 3 scenarios: maintenance, failure, normal
+      - Generates static objects + continuous sounds + alert events
+  - 72 unit tests for sound synthesis (all passing)
+
+- **Demo and Visualization Tools**
+  - Episode recording infrastructure:
+    - `physonic/visualization/recorder.py`: Episode recording compatible with Gymnasium VideoRecorder API
+    - EpisodeRecorder class for saving/loading RL episodes
+    - Saves: observations (NPY), actions, rewards, infos (JSON), audio (WAV)
+    - Export stubs for HuggingFace datasets and Isaac Sim USD format (future)
+    - JSON metadata with environment info and episode statistics
+  - Visualization utilities:
+    - `physonic/visualization/plots.py`: Comprehensive plotting functions
+    - Functions: plot_waveform, plot_spectrogram, plot_mel_spectrogram, plot_metrics, plot_confusion_matrix, plot_episode_summary
+    - Matplotlib-based with save-to-file support
+  - Interactive demo scripts:
+    - `demo_rl_env.py`: Interactive demo for all three RL environments
+      - Supports localization, classification, selective response
+      - Random agent and perfect agent (ground truth cheating)
+      - Automatic episode recording and visualization generation
+    - `demo_environment_gen.py`: Interactive demo for procedural environment generation
+      - Data center scenarios (maintenance, failure, normal)
+      - Layout types (hot_aisle, pod, perimeter)
+      - Outputs: MuJoCo XML, acoustic audio, layout visualization, JSON summary
+    - `view_environment.py`: 3D environment viewer
+      - Multi-angle static rendering (Front, Top, Side, 3D View)
+      - Interactive real-time viewer support (requires mjpython on macOS)
+      - View existing XML scenes or generate environments on-the-fly
+      - MuJoCo offscreen rendering at 480x480 resolution
+  - Compatibility: Gymnasium API (VideoRecorder pattern), HuggingFace datasets (export stub), Isaac Sim USD (export stub)
+
 - **Phase 4C: Selective Response RL Environment**
   - Binary decision-making task (respond/ignore to acoustic events)
   - Configurable target materials and distractor materials
