@@ -24,15 +24,16 @@ from stable_baselines3.common.logger import configure
 
 from physonic.envs.data_center_nav import DataCenterNavigationEnv
 
-# Import video recorder (optional)
+# Import video recorder and training monitor (optional)
 try:
     import sys
     sys.path.insert(0, str(Path(__file__).parent))
     from video_recorder_callback import VideoRecorderCallback
+    from training_monitor_callback import TrainingMonitorCallback, RealTimeViewer
     VIDEO_AVAILABLE = True
 except ImportError:
     VIDEO_AVAILABLE = False
-    print("Warning: video_recorder_callback not found, video recording disabled")
+    print("Warning: video callbacks not found, video recording disabled")
 
 
 def make_env(rank: int, seed: int = 0):
@@ -73,6 +74,9 @@ def train_ppo(
     seed: int = 42,
     record_video: bool = False,
     video_freq: int = 50000,
+    monitor_training: bool = False,
+    monitor_freq: int = 10000,
+    show_window: bool = False,
 ):
     """Train PPO agent on data center navigation.
 
@@ -89,8 +93,11 @@ def train_ppo(
         gamma: Discount factor
         device: Device ('auto', 'cpu', 'cuda')
         seed: Random seed
-        record_video: Whether to record training videos
-        video_freq: Video recording frequency (timesteps)
+        record_video: Whether to record evaluation videos
+        video_freq: Evaluation video recording frequency
+        monitor_training: Whether to record training rollout videos
+        monitor_freq: Training video recording frequency
+        show_window: Show live window during training (VERY SLOW)
     """
     # Create output directories
     output_path = Path(output_dir)
@@ -112,11 +119,14 @@ def train_ppo(
     print("Creating environments...")
     if n_envs > 1:
         env = SubprocVecEnv([make_env(i, seed) for i in range(n_envs)])
+        print(f"Using SubprocVecEnv for parallel training ({n_envs} environments)")
     else:
         env = DummyVecEnv([make_env(0, seed)])
+        print(f"Using DummyVecEnv for single environment")
 
-    # Create evaluation environment
+    # Create evaluation environment (always DummyVecEnv for video recording)
     eval_env = DummyVecEnv([make_env(100, seed)])
+    print("Evaluation environment: DummyVecEnv (required for video recording)")
 
     print(f"Environment: {env.observation_space}")
     print(f"Action space: {env.action_space}")
@@ -183,18 +193,51 @@ def train_ppo(
 
     callbacks = [eval_callback, checkpoint_callback]
 
-    # Video recording callback (optional)
+    # Video recording callback for EVALUATION episodes (optional)
     if record_video and VIDEO_AVAILABLE:
         video_callback = VideoRecorderCallback(
             eval_env=eval_env,
-            video_folder=str(output_path / "videos"),
+            video_folder=str(output_path / "eval_videos"),
             record_freq=video_freq,
             verbose=1,
         )
         callbacks.append(video_callback)
-        print(f"Video recording enabled (every {video_freq:,} steps)")
+        print(f"Evaluation video recording enabled (every {video_freq:,} steps)")
     elif record_video and not VIDEO_AVAILABLE:
-        print("Warning: Video recording requested but video_recorder_callback not available")
+        print("Warning: Video recording requested but callbacks not available")
+
+    # Training monitor for TRAINING rollouts (optional)
+    if monitor_training and VIDEO_AVAILABLE:
+        if n_envs > 1:
+            print("⚠️  WARNING: Training monitor requires --n-envs 1")
+            print("   Training videos will NOT be recorded with parallel environments")
+            print("   Use --record-video for evaluation videos instead")
+        else:
+            training_monitor = TrainingMonitorCallback(
+                video_folder=str(output_path / "training_videos"),
+                record_freq=monitor_freq,
+                record_duration=100,  # 10 seconds @ 10Hz
+                show_window=False,     # Don't show window by default
+                verbose=1,
+            )
+            callbacks.append(training_monitor)
+            print(f"Training monitor enabled (recording every {monitor_freq:,} steps)")
+
+    # Real-time viewer (optional, VERY SLOW)
+    if show_window and VIDEO_AVAILABLE:
+        if n_envs > 1:
+            print("⚠️  WARNING: Real-time viewer requires --n-envs 1")
+            print("   Live window will NOT work with parallel environments")
+        else:
+            realtime_viewer = RealTimeViewer(
+                update_freq=10,  # Update display every 10 steps
+                verbose=1,
+            )
+            callbacks.append(realtime_viewer)
+            print("Real-time viewer enabled (WARNING: This SIGNIFICANTLY slows training!)")
+            print("  Press 'q' in the window to close viewer (training continues)")
+    elif show_window and not VIDEO_AVAILABLE:
+        print("Warning: Real-time viewer requested but callbacks not available")
 
     # Train
     print("Starting training...")
@@ -341,9 +384,15 @@ def main():
 
     # Video recording args
     parser.add_argument("--record-video", action="store_true",
-                       help="Record training videos")
+                       help="Record evaluation episode videos")
     parser.add_argument("--video-freq", type=int, default=50000,
-                       help="Video recording frequency (timesteps)")
+                       help="Evaluation video recording frequency")
+    parser.add_argument("--monitor-training", action="store_true",
+                       help="Record training rollout videos (see actual training)")
+    parser.add_argument("--monitor-freq", type=int, default=10000,
+                       help="Training video recording frequency")
+    parser.add_argument("--show-window", action="store_true",
+                       help="Show live window during training (VERY SLOW!)")
 
     args = parser.parse_args()
 
@@ -372,6 +421,9 @@ def main():
             seed=args.seed,
             record_video=args.record_video,
             video_freq=args.video_freq,
+            monitor_training=args.monitor_training,
+            monitor_freq=args.monitor_freq,
+            show_window=args.show_window,
         )
 
 

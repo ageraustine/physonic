@@ -66,10 +66,17 @@ class VideoRecorderCallback(BaseCallback):
             print(f"\nRecording video: {video_path}")
 
         # Get the actual Gymnasium environment
-        # VecEnv wrapping: VecEnv → DummyVecEnv → Monitor → Gymnasium env
+        # Only works with DummyVecEnv (not SubprocVecEnv)
         try:
+            # Check if this is DummyVecEnv
+            if not hasattr(self.eval_env, 'envs'):
+                if self.verbose > 0:
+                    print("Warning: Video recording only works with DummyVecEnv (not SubprocVecEnv)")
+                    print("  Use --n-envs 1 for evaluation environment to enable video recording")
+                return
+
             # Unwrap to get the actual environment with MuJoCo
-            env = self.eval_env.envs[0]  # Get first env from VecEnv
+            env = self.eval_env.envs[0]  # Get first env from DummyVecEnv
             while hasattr(env, 'env'):
                 env = env.env  # Unwrap Monitor, etc.
 
@@ -82,6 +89,7 @@ class VideoRecorderCallback(BaseCallback):
         except (AttributeError, IndexError) as e:
             if self.verbose > 0:
                 print(f"Warning: Could not access environment: {e}")
+                print("  Video recording requires DummyVecEnv, not SubprocVecEnv")
             return
 
         # Create MuJoCo renderer

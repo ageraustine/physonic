@@ -872,7 +872,7 @@ If you use Physonic in your research, please cite:
 ```bibtex
 @software{physonic2025,
   title = {Physonic: Physics-Driven Acoustic Synthesis for Robot Perception},
-  author = {Your Name},
+  author = {Ager Austen},
   year = {2025},
   url = {https://github.com/ageraustine/physonic},
   note = {Version 1.0}
