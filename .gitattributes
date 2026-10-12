@@ -1,0 +1,27 @@
+# Auto-detect text files and normalize line endings to LF
+* text=auto
+
+# Python files
+*.py text eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+
+# Config files
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+
+# Binary files
+*.wav binary
+*.flac binary
+*.mp4 binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.npz binary
+*.parquet binary
+*.hdf5 binary
+*.zip binary

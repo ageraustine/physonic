@@ -1,0 +1,36 @@
+# Core dependencies (Phase 1)
+mujoco>=3.0.0
+numpy>=1.24.0
+scipy>=1.11.0
+soundfile>=0.12.0
+matplotlib>=3.7.0
+
+# Spatial audio dependencies (Phase 2A)
+resampy>=0.4.2
+
+# Testing & development
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.0
+
+# Type checking & code quality
+mypy>=1.5.0
+black>=23.7.0
+isort>=5.12.0
+
+# Dataset export (Phase 3A)
+pyarrow>=26.0.0
+pandas>=3.0.0
+
+# Future dependencies (commented out until needed)
+# Phase 3B - Video rendering
+# opencv-python>=4.8.0
+# imageio-ffmpeg>=0.4.9
+
+# Phase 3C+ - Advanced features
+# datasets>=2.14.0  # Hugging Face datasets integration
+
+# Phase 4 - RL
+# gymnasium>=0.29.0
+# stable-baselines3>=2.1.0
+# librosa>=0.10.0
