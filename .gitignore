@@ -61,9 +61,11 @@ logs/
 runs/
 models/
 
-# Exceptions: keep example outputs
+# Exceptions: keep outputs directory structure and README
+!outputs/
+!outputs/README.md
 !outputs/spectrograms.png
-!outputs/*.wav
+outputs/*/
 
 # HRTF datasets (large files)
 assets/hrtf/

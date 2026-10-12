@@ -1,16 +1,16 @@
 """Run demo: simulate -> extract impacts -> synthesize -> write WAV/JSON/PNG.
 
     # Mono (contact) audio only
-    python3 -m physonic.run_demo [--out outputs] [--seed 0]
+    python3 -m physonic.run_demo --out outputs/mono --seed 0
 
     # Binaural (spatial) audio
-    python3 -m physonic.run_demo --spatial --hrtf-path assets/hrtf/mit_kemar/ [--mic-position 0,0,1.5]
+    python3 -m physonic.run_demo --spatial --hrtf-path assets/hrtf/mit_kemar/ --out outputs/spatial
 
     # Spatial + room acoustics (preset)
-    python3 -m physonic.run_demo --spatial --room warehouse_large
+    python3 -m physonic.run_demo --spatial --room warehouse_large --out outputs/reverb
 
     # Spatial + room acoustics (custom)
-    python3 -m physonic.run_demo --spatial --room-dim 30,20,8 --rt60 2.5 --absorption 0.15
+    python3 -m physonic.run_demo --spatial --room-dim 30,20,8 --rt60 2.5 --absorption 0.15 --out outputs/custom
 """
 import argparse
 import json

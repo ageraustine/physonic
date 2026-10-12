@@ -5,13 +5,13 @@ Usage:
     python3 -m physonic.run_demo_multi --list
 
     # Run a specific scenario
-    python3 -m physonic.run_demo_multi --scenario stack_collapse --surface wood --out outputs_multi
+    python3 -m physonic.run_demo_multi --scenario stack_collapse --surface wood --out outputs/multi
 
     # Run with spatial audio
-    python3 -m physonic.run_demo_multi --scenario two_sphere_collision --spatial --hrtf-path assets/hrtf/test_kemar
+    python3 -m physonic.run_demo_multi --scenario two_sphere_collision --spatial --hrtf-path assets/hrtf/test_kemar --out outputs/multi_spatial
 
     # Custom number of objects (for applicable scenarios)
-    python3 -m physonic.run_demo_multi --scenario sphere_cascade --n-objects 8
+    python3 -m physonic.run_demo_multi --scenario sphere_cascade --n-objects 8 --out outputs/cascade
 """
 import argparse
 import json

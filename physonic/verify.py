@@ -1,6 +1,7 @@
 """Sanity checks + spectrogram sheet for the generated clips.
 
-    python3 -m physonic.verify [--out outputs] [--binaural]
+    python3 -m physonic.verify --out outputs/mono
+    python3 -m physonic.verify --out outputs/spatial --binaural
 """
 import argparse
 import json
