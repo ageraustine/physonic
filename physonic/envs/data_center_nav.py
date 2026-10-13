@@ -36,7 +36,7 @@ class DataCenterNavigationEnv(gym.Env):
         - Robot state: (6,) - [x, y, z, vx, vy, heading]
 
     **Actions**:
-        - Continuous 2D velocity: (2,) - [vx, vy] in [-1, 1] m/s
+        - Continuous 2D velocity: (2,) - [vx, vy] in [-1, 1], scaled to [-5, 5] m/s
 
     **Rewards** (configurable via reward_shaping parameter):
         - **Progress mode (default)**: +10.0 * delta_distance (positive when moving closer)
@@ -308,6 +308,9 @@ class DataCenterNavigationEnv(gym.Env):
         self.robot_start_position = self._sample_free_position()
         self.data.qpos[0:2] = self.robot_start_position[:2]  # x, y
 
+        # Forward kinematics to update derived quantities (xpos, xvel, etc.)
+        mujoco.mj_forward(self.model, self.data)
+
         # Set random goal position
         self.goal_position = self._sample_free_position()
 
@@ -344,7 +347,7 @@ class DataCenterNavigationEnv(gym.Env):
         """Execute one step.
 
         Args:
-            action: [vx, vy] velocity commands in [-1, 1] m/s
+            action: [vx, vy] velocity commands in [-1, 1], scaled to [-5, 5] m/s
 
         Returns:
             observation: Dict with 'audio' and 'state'
@@ -355,8 +358,8 @@ class DataCenterNavigationEnv(gym.Env):
         """
         # Apply action (velocity control)
         vx, vy = action
-        self.data.ctrl[0] = vx * 2.0  # Scale to reasonable velocity
-        self.data.ctrl[1] = vy * 2.0
+        self.data.ctrl[0] = vx * 10.0  # Increased to 10.0 for more power (was 5.0)
+        self.data.ctrl[1] = vy * 10.0  # Range: [-10, 10] with gear=1000 for massive torque
 
         # Step physics (multiple substeps for stability)
         steps_per_control = int(1.0 / (self.control_freq * self.model.opt.timestep))
@@ -383,6 +386,11 @@ class DataCenterNavigationEnv(gym.Env):
             # Progress-based: reward getting closer, penalize moving away
             delta_distance = self.previous_distance - current_distance
             reward = 10.0 * delta_distance
+
+            # Time penalty: small constant penalty to encourage faster completion
+            # This prevents the robot from hovering/idling
+            reward -= 0.01  # Small time cost
+
         elif self.reward_shaping == "distance":
             # Original: distance penalty (always negative)
             reward = -0.01 * current_distance
@@ -392,6 +400,10 @@ class DataCenterNavigationEnv(gym.Env):
 
         # Store for next step
         self.previous_distance = current_distance
+
+        # REMOVED: Proximity penalty (was counterproductive - prevented navigation learning)
+        # Robot should learn obstacle avoidance naturally from collision penalties,
+        # not from explicit proximity penalties that discourage movement
 
         # Check if goal reached
         terminated = False
@@ -473,7 +485,7 @@ class DataCenterNavigationEnv(gym.Env):
             modulation_freq=2.0,  # 2Hz pulsing (easy to detect)
             modulation_depth=0.8,  # Strong modulation (amplitude varies)
             position=tuple(position),
-            volume=2.0,  # Louder than ambient servers
+            volume=5.0,  # VERY LOUD (was 2.0) - must be audible from corners
         )
 
         # Add to audio generator's continuous sounds

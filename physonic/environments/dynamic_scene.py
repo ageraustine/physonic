@@ -133,15 +133,15 @@ def build_moving_robot_xml(spec: MovingRobotSpec) -> str:
     <!-- {spec.name} - MOVING ROBOT (Bright Orange with Red Marker) -->
     <body name="{spec.name}" pos="{x:.3f} {y:.3f} {z:.3f}">
       <inertial pos="0 0 0" mass="{spec.mass:.2f}" diaginertia="{ixx:.3f} {iyy:.3f} {izz:.3f}" />
-      <!-- Main robot body (sphere) -->
+      <!-- Main robot body (sphere) - LOW FRICTION to prevent getting stuck -->
       <geom type="sphere" size="{width/2:.3f}"
-            rgba="1.0 0.5 0.0 1" friction="0.5 0.005 0.0001" />
+            rgba="1.0 0.5 0.0 1" friction="0.1 0.005 0.0001" />
       <!-- Bright marker on top -->
       <geom type="cylinder" size="0.15 0.3" pos="0 0 {height/2 + 0.3:.3f}"
             rgba="1.0 0.0 0.0 1" />
-      <joint name="{spec.name}_slide_x" type="slide" axis="1 0 0" limited="false" damping="10" />
-      <joint name="{spec.name}_slide_y" type="slide" axis="0 1 0" limited="false" damping="10" />
-      <joint name="{spec.name}_hinge" type="hinge" axis="0 0 1" limited="false" damping="1" />
+      <joint name="{spec.name}_slide_x" type="slide" axis="1 0 0" limited="false" damping="0.5" />
+      <joint name="{spec.name}_slide_y" type="slide" axis="0 1 0" limited="false" damping="0.5" />
+      <joint name="{spec.name}_hinge" type="hinge" axis="0 0 1" limited="false" damping="0.2" />
     </body>
 """
     return xml
@@ -175,6 +175,11 @@ def build_complex_scene_xml(
         '<mujoco model="complex_data_center">',
         '  <option timestep="0.001" gravity="0 0 -9.81" />',
         '',
+        '  <!-- Default contact properties: softer contacts with slight bounce to prevent sticking -->',
+        '  <default>',
+        '    <geom solref="0.01 1" solimp="0.9 0.95 0.001" />',
+        '  </default>',
+        '',
         '  <!-- Visual settings -->',
         '  <visual>',
         '    <headlight ambient="0.8 0.8 0.8" diffuse="0.8 0.8 0.8" specular="0.5 0.5 0.5" />',
@@ -197,11 +202,11 @@ def build_complex_scene_xml(
         f'    <!-- Floor -->',
         f'    <geom type="plane" size="{floor_width} {floor_depth} 0.1" material="matplane" />',
         '',
-        '    <!-- Walls for containment -->',
-        f'    <geom type="box" pos="{floor_width} {floor_depth/2} 1.5" size="0.1 {floor_depth/2} 1.5" rgba="0.6 0.6 0.7 0.3" />',
-        f'    <geom type="box" pos="0 {floor_depth/2} 1.5" size="0.1 {floor_depth/2} 1.5" rgba="0.6 0.6 0.7 0.3" />',
-        f'    <geom type="box" pos="{floor_width/2} {floor_depth} 1.5" size="{floor_width/2} 0.1 1.5" rgba="0.6 0.6 0.7 0.3" />',
-        f'    <geom type="box" pos="{floor_width/2} 0 1.5" size="{floor_width/2} 0.1 1.5" rgba="0.6 0.6 0.7 0.3" />',
+        '    <!-- Walls for containment (low friction to prevent sticking) -->',
+        f'    <geom type="box" pos="{floor_width} {floor_depth/2} 1.5" size="0.1 {floor_depth/2} 1.5" rgba="0.6 0.6 0.7 0.3" friction="0.05 0.005 0.0001" />',
+        f'    <geom type="box" pos="0 {floor_depth/2} 1.5" size="0.1 {floor_depth/2} 1.5" rgba="0.6 0.6 0.7 0.3" friction="0.05 0.005 0.0001" />',
+        f'    <geom type="box" pos="{floor_width/2} {floor_depth} 1.5" size="{floor_width/2} 0.1 1.5" rgba="0.6 0.6 0.7 0.3" friction="0.05 0.005 0.0001" />',
+        f'    <geom type="box" pos="{floor_width/2} 0 1.5" size="{floor_width/2} 0.1 1.5" rgba="0.6 0.6 0.7 0.3" friction="0.05 0.005 0.0001" />',
         '',
     ]
 
@@ -222,9 +227,13 @@ def build_complex_scene_xml(
         xml_parts.append('  <!-- Actuators for robot movement -->')
         xml_parts.append('  <actuator>')
         for robot in moving_robots:
-            xml_parts.append(f'    <motor joint="{robot.name}_slide_x" gear="100" ctrllimited="true" ctrlrange="-10 10" />')
-            xml_parts.append(f'    <motor joint="{robot.name}_slide_y" gear="100" ctrllimited="true" ctrlrange="-10 10" />')
-            xml_parts.append(f'    <motor joint="{robot.name}_hinge" gear="20" ctrllimited="true" ctrlrange="-5 5" />')
+            # Velocity motors for direct velocity control
+            # kv parameter sets feedback gain (velocity tracking)
+            # gear parameter multiplies force output (TORQUE/POWER)
+            # Massive gear ratio (1000) to overcome friction when stuck in corners
+            xml_parts.append(f'    <velocity joint="{robot.name}_slide_x" kv="300" gear="1000" ctrllimited="true" ctrlrange="-20 20" />')
+            xml_parts.append(f'    <velocity joint="{robot.name}_slide_y" kv="300" gear="1000" ctrllimited="true" ctrlrange="-20 20" />')
+            xml_parts.append(f'    <velocity joint="{robot.name}_hinge" kv="100" gear="500" ctrllimited="true" ctrlrange="-20 20" />')
         xml_parts.append('  </actuator>')
     else:
         xml_parts.append('  </worldbody>')
@@ -348,16 +357,13 @@ def generate_complex_data_center(
 
     # Add moving robots
     for i in range(num_robots):
-        # Random patrol path
-        start_x = rng.uniform(2, room_width - 2)
-        start_y = rng.uniform(2, room_depth - 2)
-        end_x = rng.uniform(2, room_width - 2)
-        end_y = rng.uniform(2, room_depth - 2)
-
+        # For RL environments, robot starts at origin (0, 0, 0.6)
+        # so qpos[0:2] directly controls absolute position
+        # (not offsets from start_position)
         robot = MovingRobotSpec(
             name=f"robot_{i+1}",
-            start_position=(start_x, start_y, 0.6),  # Higher for larger robot
-            end_position=(end_x, end_y, 0.6),
+            start_position=(0.0, 0.0, 0.6),  # Origin - qpos controls absolute position
+            end_position=(0.0, 0.0, 0.6),  # Not used in RL
             speed=0.5,  # 0.5 m/s
             mass=120.0,  # Match default mass
         )

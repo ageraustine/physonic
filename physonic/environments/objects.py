@@ -218,7 +218,7 @@ def build_static_object_xml(spec: StaticObjectSpec) -> str:
     <!-- {spec.name} ({spec.object_type}) -->
     <body name="{spec.name}" pos="{x:.3f} {y:.3f} {z:.3f}" quat="{quat}" mocap="true">
       <geom type="box" size="{width/2:.3f} {depth/2:.3f} {height/2:.3f}"
-            rgba="{color}" mass="1000" />
+            rgba="{color}" mass="1000" friction="0.1 0.005 0.0001" />
     </body>
 """
     return xml
