@@ -39,6 +39,7 @@ class TrainingMonitorCallback(BaseCallback):
         enable_audio: bool = True,       # Enable binaural audio rendering
         audio_sample_rate: int = 44100,
         hrtf_path: str = "assets/hrtf/test_kemar/",
+        max_audio_distance: float = 30.0,  # Maximum audible distance (meters) - culling optimization
         verbose: int = 0,
     ):
         """Initialize training monitor.
@@ -52,6 +53,7 @@ class TrainingMonitorCallback(BaseCallback):
             enable_audio: Enable binaural audio rendering
             audio_sample_rate: Audio sample rate (Hz)
             hrtf_path: Path to HRTF dataset
+            max_audio_distance: Maximum distance for audible sounds (meters). Sounds beyond this distance are culled (not rendered).
             verbose: Verbosity level
         """
         super().__init__(verbose)
@@ -62,6 +64,7 @@ class TrainingMonitorCallback(BaseCallback):
         self.fps = fps
         self.enable_audio = enable_audio
         self.audio_sample_rate = audio_sample_rate
+        self.max_audio_distance = max_audio_distance
 
         self.video_folder.mkdir(parents=True, exist_ok=True)
 
@@ -177,15 +180,29 @@ class TrainingMonitorCallback(BaseCallback):
         # Synthesize each continuous sound source
         num_samples = int(frame_duration * self.audio_sample_rate)
 
-        # Account for propagation delay
-        max_distance = max([np.linalg.norm(np.array(s.position) - robot_position)
-                           for s in self.continuous_sounds] + [0])
-        max_delay_samples = int((max_distance / 343.0) * self.audio_sample_rate)
+        # Account for propagation delay (only for audible range)
+        max_delay_samples = int((self.max_audio_distance / 343.0) * self.audio_sample_rate)
         buffer_length = num_samples + max_delay_samples
 
         binaural_mix = np.zeros((buffer_length, 2), dtype=np.float32)
 
+        # OPTIMIZATION: Spatial audio culling - only render sounds within audible range
+        # Filter sound sources by distance to robot (perceptual culling)
+        audible_sounds = []
         for sound_spec in self.continuous_sounds:
+            source_position = np.array(sound_spec.position)
+            distance = np.linalg.norm(source_position - robot_position)
+
+            if distance <= self.max_audio_distance:
+                audible_sounds.append((sound_spec, distance))
+
+        # Sort by distance (render closest sounds first for better mixing)
+        audible_sounds.sort(key=lambda x: x[1])
+
+        if self.verbose > 1 and audible_sounds:
+            print(f"  Rendering {len(audible_sounds)}/{len(self.continuous_sounds)} audible sources (within {self.max_audio_distance}m)")
+
+        for sound_spec, distance in audible_sounds:
             # Generate mono audio for this source
             mono_audio = synthesize_continuous_sound(
                 sound_spec,

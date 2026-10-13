@@ -102,3 +102,5 @@ api_keys/
 outputs_*
 # OS
 Thumbs.db
+.claude/
+CLAUDE.MD

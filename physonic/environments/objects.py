@@ -41,11 +41,32 @@ class StaticObjectSpec:
 
 # Standard object dimensions (width, depth, height) in meters
 OBJECT_SIZES = {
-    # Data center objects
-    "server_rack": (0.6, 1.0, 2.0),
-    "cooling_unit": (0.8, 0.8, 1.5),
-    "cable_tray": (0.3, 2.0, 0.1),
-    "raised_floor_panel": (0.6, 0.6, 0.4),
+    # Data center objects - Compute & Storage
+    "server_rack": (0.6, 1.0, 2.0),              # Standard 19" rack
+    "storage_rack": (0.6, 1.2, 2.0),             # Deeper for disk arrays
+    "network_rack": (0.6, 0.8, 2.0),             # Network switches
+    "blade_server": (0.6, 0.8, 1.8),             # High-density compute
+
+    # Data center objects - Power
+    "pdu": (0.4, 0.6, 2.0),                      # Power Distribution Unit
+    "ups_unit": (0.8, 1.2, 1.8),                 # Uninterruptible Power Supply
+    "battery_cabinet": (0.6, 0.8, 2.0),          # Battery backup
+    "transformer": (1.2, 1.5, 1.5),              # Power transformer
+
+    # Data center objects - Cooling
+    "cooling_unit": (0.8, 0.8, 1.5),             # Precision cooling (CRAC/CRAH)
+    "crac_unit": (1.2, 1.2, 2.5),                # Large Computer Room Air Conditioner
+    "hot_aisle_containment": (1.5, 0.1, 2.5),    # Containment door/panel
+    "cold_aisle_containment": (1.5, 0.1, 2.5),   # Containment door/panel
+
+    # Data center objects - Infrastructure
+    "cable_tray": (0.3, 2.0, 0.1),               # Overhead cable management
+    "cable_ladder": (0.5, 3.0, 0.15),            # Larger cable runs
+    "raised_floor_panel": (0.6, 0.6, 0.4),       # Access floor
+    "maintenance_cart": (0.8, 1.2, 1.0),         # Equipment cart
+    "access_door": (1.2, 0.2, 2.4),              # Entry door
+    "fire_suppression_panel": (0.6, 0.3, 1.5),   # Fire safety
+    "monitoring_station": (1.5, 0.8, 1.2),       # NOC desk/station
 
     # Warehouse objects
     "pallet_stack_low": (1.2, 1.0, 1.0),
@@ -63,15 +84,36 @@ OBJECT_SIZES = {
 
 # Default materials for object types
 OBJECT_MATERIALS = {
+    # Data center - Compute & Storage
     "server_rack": "steel",
+    "storage_rack": "steel",
+    "network_rack": "steel",
+    "blade_server": "steel",
+    # Data center - Power
+    "pdu": "steel",
+    "ups_unit": "steel",
+    "battery_cabinet": "steel",
+    "transformer": "steel",
+    # Data center - Cooling
     "cooling_unit": "steel",
+    "crac_unit": "steel",
+    "hot_aisle_containment": "glass",  # Transparent containment
+    "cold_aisle_containment": "glass",
+    # Data center - Infrastructure
     "cable_tray": "steel",
+    "cable_ladder": "steel",
     "raised_floor_panel": "steel",
+    "maintenance_cart": "steel",
+    "access_door": "steel",
+    "fire_suppression_panel": "steel",
+    "monitoring_station": "wood",
+    # Warehouse
     "pallet_stack_low": "wood",
     "pallet_stack_medium": "wood",
     "pallet_stack_high": "wood",
     "shelving_unit": "steel",
     "forklift": "steel",
+    # Supermarket
     "shelf_unit": "steel",
     "shopping_cart": "steel",
     "checkout_counter": "wood",

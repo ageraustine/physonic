@@ -1,13 +1,27 @@
 """Train PPO agent for data center navigation with acoustic perception.
 
-This script trains a PPO agent to navigate through a complex data center
-using binaural audio observations and proprioceptive state.
+This script trains a PPO agent to navigate through data centers using:
+- Mimi-compressed binaural audio observations (32×7 codes, ~353x compression)
+- Ultrasonic sensors for proximity detection (4 distances)
+- Proprioceptive state (position, velocity, heading)
+
+Supports multiple environment scales:
+- basic: 30×25m, 24 racks (default)
+- small_hyperscale: 60×50m, 500 racks
+- medium_hyperscale: 100×80m, 1000 racks
+- large_hyperscale: 150×120m, 2000 racks (China-scale)
 
 Compatible with Stable-Baselines3.
 
 Usage:
-    python3 train_ppo_data_center.py --total-timesteps 1000000 --eval-freq 10000
-    python3 train_ppo_data_center.py --load models/ppo_datacenter_best.zip --eval-only
+    # Basic data center (24 racks)
+    PYTHONPATH=. python3 scripts/training/train_ppo_data_center.py --total-timesteps 1000000
+
+    # Medium hyperscale (1000 racks)
+    PYTHONPATH=. python3 scripts/training/train_ppo_data_center.py --env-scale medium_hyperscale --total-timesteps 2000000
+
+    # Large hyperscale (2000 racks, China-scale)
+    PYTHONPATH=. python3 scripts/training/train_ppo_data_center.py --env-scale large_hyperscale --total-timesteps 5000000 --n-envs 8
 """
 
 import argparse
@@ -24,6 +38,30 @@ from stable_baselines3.common.logger import configure
 
 from physonic.envs.data_center_nav import DataCenterNavigationEnv
 
+# Environment scale configurations
+ENV_SCALES = {
+    "basic": {
+        "room_size": (30, 25, 4),
+        "num_racks": 24,
+        "description": "Basic data center (30×25m, 24 racks)",
+    },
+    "small_hyperscale": {
+        "room_size": (60, 50, 4),
+        "num_racks": 500,
+        "description": "Small hyperscale (60×50m, ~500 racks)",
+    },
+    "medium_hyperscale": {
+        "room_size": (100, 80, 4),
+        "num_racks": 1000,
+        "description": "Medium hyperscale (100×80m, ~1000 racks)",
+    },
+    "large_hyperscale": {
+        "room_size": (150, 120, 4),
+        "num_racks": 2000,
+        "description": "Large hyperscale - China scale (150×120m, ~2000 racks)",
+    },
+}
+
 # Import video recorder and training monitor (optional)
 try:
     import sys
@@ -36,23 +74,27 @@ except ImportError:
     print("Warning: video callbacks not found, video recording disabled")
 
 
-def make_env(rank: int, seed: int = 0):
+def make_env(rank: int, seed: int = 0, env_scale: str = "basic"):
     """Create a single environment instance.
 
     Args:
         rank: Unique ID for this environment
         seed: Random seed
+        env_scale: Environment scale ("basic", "small_hyperscale", "medium_hyperscale", "large_hyperscale")
 
     Returns:
         Function that creates environment
     """
     def _init():
+        scale_config = ENV_SCALES[env_scale]
         env = DataCenterNavigationEnv(
-            room_size=(30, 25, 4),
-            num_racks=24,
-            use_mel_spectrogram=True,
+            room_size=scale_config["room_size"],
+            num_racks=scale_config["num_racks"],
+            use_mimi=True,  # Enable Mimi codec compression
             max_steps=500,
             seed=seed + rank,
+            use_optimized_scene=True,  # Enable MuJoCo optimization
+            compound_group_size=10,  # 10 objects per compound body
         )
         env = Monitor(env)
         return env
@@ -65,6 +107,7 @@ def train_ppo(
     eval_freq: int = 10000,
     save_freq: int = 50000,
     output_dir: str = "outputs/ppo_datacenter",
+    env_scale: str = "basic",
     learning_rate: float = 3e-4,
     n_steps: int = 2048,
     batch_size: int = 64,
@@ -86,6 +129,7 @@ def train_ppo(
         eval_freq: Evaluation frequency
         save_freq: Checkpoint save frequency
         output_dir: Output directory for models and logs
+        env_scale: Environment scale ("basic", "small_hyperscale", "medium_hyperscale", "large_hyperscale")
         learning_rate: Learning rate
         n_steps: Steps per rollout
         batch_size: Minibatch size
@@ -108,6 +152,18 @@ def train_ppo(
     print("=" * 70)
     print("PPO Training: Data Center Navigation")
     print("=" * 70)
+
+    # Print environment configuration
+    scale_config = ENV_SCALES[env_scale]
+    print(f"Environment: {scale_config['description']}")
+    print(f"  Room size: {scale_config['room_size'][0]}×{scale_config['room_size'][1]}m")
+    print(f"  Racks: {scale_config['num_racks']}")
+    print()
+    print("Observations:")
+    print("  - Audio: Mimi-compressed binaural (32×7 codes, ~353x compression)")
+    print("  - Ultrasonic: 4 distance sensors (front/left/right/back)")
+    print("  - State: position, velocity, heading (6 floats)")
+    print()
     print(f"Total timesteps: {total_timesteps:,}")
     print(f"Parallel envs: {n_envs}")
     print(f"Learning rate: {learning_rate}")
@@ -118,14 +174,14 @@ def train_ppo(
     # Create vectorized environments
     print("Creating environments...")
     if n_envs > 1:
-        env = SubprocVecEnv([make_env(i, seed) for i in range(n_envs)])
+        env = SubprocVecEnv([make_env(i, seed, env_scale) for i in range(n_envs)])
         print(f"Using SubprocVecEnv for parallel training ({n_envs} environments)")
     else:
-        env = DummyVecEnv([make_env(0, seed)])
+        env = DummyVecEnv([make_env(0, seed, env_scale)])
         print(f"Using DummyVecEnv for single environment")
 
     # Create evaluation environment (always DummyVecEnv for video recording)
-    eval_env = DummyVecEnv([make_env(100, seed)])
+    eval_env = DummyVecEnv([make_env(100, seed, env_scale)])
     print("Evaluation environment: DummyVecEnv (required for video recording)")
 
     print(f"Environment: {env.observation_space}")
@@ -270,6 +326,7 @@ def evaluate_agent(
     n_episodes: int = 10,
     render: bool = False,
     seed: int = 42,
+    env_scale: str = "basic",
 ):
     """Evaluate trained agent.
 
@@ -278,12 +335,17 @@ def evaluate_agent(
         n_episodes: Number of evaluation episodes
         render: Whether to render (not implemented)
         seed: Random seed
+        env_scale: Environment scale
     """
     print("=" * 70)
     print("PPO Evaluation: Data Center Navigation")
     print("=" * 70)
     print(f"Model: {model_path}")
     print(f"Episodes: {n_episodes}")
+
+    # Print environment configuration
+    scale_config = ENV_SCALES[env_scale]
+    print(f"Environment: {scale_config['description']}")
     print()
 
     # Load model
@@ -293,8 +355,8 @@ def evaluate_agent(
     # Create environment
     print("Creating environment...")
     env = DataCenterNavigationEnv(
-        room_size=(30, 25, 4),
-        num_racks=24,
+        room_size=scale_config["room_size"],
+        num_racks=scale_config["num_racks"],
         use_mel_spectrogram=True,
         max_steps=500,
         seed=seed,
@@ -341,7 +403,29 @@ def evaluate_agent(
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train PPO on Data Center Navigation")
+    parser = argparse.ArgumentParser(
+        description="Train PPO on Data Center Navigation",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+Environment Scales:
+{chr(10).join(f'  {key:20s} - {config["description"]}' for key, config in ENV_SCALES.items())}
+
+Examples:
+  # Basic data center (24 racks)
+  python3 train_ppo_data_center.py --total-timesteps 1000000
+
+  # Medium hyperscale (1000 racks)
+  python3 train_ppo_data_center.py --env-scale medium_hyperscale --total-timesteps 2000000
+
+  # Large hyperscale with 8 parallel envs
+  python3 train_ppo_data_center.py --env-scale large_hyperscale --n-envs 8 --total-timesteps 5000000
+"""
+    )
+
+    # Environment args
+    parser.add_argument("--env-scale", type=str, default="basic",
+                       choices=list(ENV_SCALES.keys()),
+                       help="Environment scale (default: basic)")
 
     # Training args
     parser.add_argument("--total-timesteps", type=int, default=1000000,
@@ -404,6 +488,7 @@ def main():
             model_path=args.load,
             n_episodes=args.n_eval_episodes,
             seed=args.seed,
+            env_scale=args.env_scale,
         )
     else:
         train_ppo(
@@ -412,6 +497,7 @@ def main():
             eval_freq=args.eval_freq,
             save_freq=args.save_freq,
             output_dir=args.output_dir,
+            env_scale=args.env_scale,
             learning_rate=args.learning_rate,
             n_steps=args.n_steps,
             batch_size=args.batch_size,

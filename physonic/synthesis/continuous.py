@@ -66,6 +66,20 @@ SOUND_PRESETS = {
         "modulation_freq": 0.8,
         "modulation_depth": 0.3,
     },
+    "equipment_buzz": {
+        "fundamental_freq": 240.0,
+        "harmonics": [1.0, 0.7, 0.5, 0.35, 0.25, 0.15],
+        "noise_amount": 0.3,
+        "modulation_freq": 3.0,
+        "modulation_depth": 0.15,
+    },
+    "compressor_hum": {
+        "fundamental_freq": 55.0,
+        "harmonics": [1.0, 0.8, 0.6, 0.4, 0.2],
+        "noise_amount": 0.4,
+        "modulation_freq": 1.0,
+        "modulation_depth": 0.25,
+    },
 }
 
 

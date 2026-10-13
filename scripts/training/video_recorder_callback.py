@@ -291,15 +291,7 @@ class VideoRecorderCallback(BaseCallback):
                         # If body not found, skip
                         continue
 
-                    # Project 3D position to 2D screen using MuJoCo's viewport
-                    # Get camera matrix
-                    viewport = mujoco.MjrRect(0, 0, 480, 480)
-
-                    # Use renderer's scene for projection
-                    pos_2d = np.zeros(3)
-                    mujoco.mjv_room2model(pos_2d, sound_pos, camera, env.model, renderer.scene)
-
-                    # Simple perspective projection
+                    # Project 3D position to 2D screen using simple perspective projection
                     # This is a rough approximation - for exact projection would need full camera matrix
                     cam_to_obj = sound_pos - camera.lookat
 

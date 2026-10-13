@@ -1,7 +1,8 @@
 """Data center navigation RL environment with acoustic perception.
 
 The agent controls a robot navigating through a complex data center using:
-- Binaural audio observations (mel-spectrograms)
+- Mimi-compressed binaural audio observations
+- Ultrasonic sensors for proximity detection
 - Proprioceptive state (position, velocity)
 - Continuous 2D velocity control
 
@@ -12,21 +13,25 @@ import gymnasium as gym
 import numpy as np
 import mujoco
 from typing import Tuple, Dict, Any, Optional
+import os
 
 from physonic.environments.dynamic_scene import (
     generate_complex_data_center,
     build_complex_scene_xml,
 )
-from physonic.environments.moving_sound_tracker import MovingSoundTracker
+from physonic.environments.scene_optimizer import build_optimized_scene_xml
+from physonic.envs.audio_observation import AudioObservationGenerator
+from physonic.envs.ultrasonic_sensor import UltrasonicSensorArray
 
 
 class DataCenterNavigationEnv(gym.Env):
     """Gymnasium environment for robot navigation in complex data center.
 
-    **Task**: Navigate to randomly placed goal positions using acoustic cues.
+    **Task**: Navigate to randomly placed goal positions using acoustic cues and ultrasonic sensors.
 
     **Observations**:
-        - Mel-spectrogram: (64, 87, 2) - binaural audio
+        - Audio codes: (32, T) - Mimi-compressed binaural audio (T ≈ 6-8 frames for 0.5s)
+        - Ultrasonic: (4,) - [front, left, right, back] distances in meters (0 to max_range)
         - Robot state: (6,) - [x, y, z, vx, vy, heading]
 
     **Actions**:
@@ -51,22 +56,34 @@ class DataCenterNavigationEnv(gym.Env):
         num_racks: int = 24,
         audio_duration: float = 0.5,  # 500ms audio windows
         control_freq: int = 10,  # 10 Hz control
-        use_mel_spectrogram: bool = True,
-        n_mels: int = 64,
         max_steps: int = 500,
         seed: Optional[int] = None,
+        use_optimized_scene: bool = True,  # Enable scene optimization
+        compound_group_size: int = 10,  # Objects per compound body
+        # Audio observation settings
+        use_mimi: bool = True,  # Enable Mimi codec compression
+        max_audio_distance: float = 30.0,  # Spatial audio culling distance
+        hrtf_path: Optional[str] = None,  # HRTF dataset path
+        # Ultrasonic sensor settings
+        ultrasonic_max_range: float = 5.0,  # Max ultrasonic range (meters)
+        num_ultrasonic_sensors: int = 4,  # Number of ultrasonic sensors (4 or 8)
     ):
         """Initialize data center navigation environment.
 
         Args:
             room_size: (width, depth, height) in meters
             num_racks: Number of server racks
-            audio_duration: Audio observation window duration
+            audio_duration: Audio observation window duration (seconds)
             control_freq: Control frequency in Hz
-            use_mel_spectrogram: Use mel-spectrogram vs raw audio
-            n_mels: Number of mel bands
             max_steps: Maximum steps per episode
             seed: Random seed
+            use_optimized_scene: Enable MuJoCo optimization (compound bodies)
+            compound_group_size: Number of objects per compound body (10-20 recommended)
+            use_mimi: Enable Mimi codec compression for audio
+            max_audio_distance: Maximum distance for spatial audio rendering (meters)
+            hrtf_path: Path to HRTF dataset (defaults to assets/hrtf/test_kemar)
+            ultrasonic_max_range: Maximum ultrasonic sensor range (meters)
+            num_ultrasonic_sensors: Number of ultrasonic sensors (4 or 8)
         """
         super().__init__()
 
@@ -74,43 +91,44 @@ class DataCenterNavigationEnv(gym.Env):
         self.num_racks = num_racks
         self.audio_duration = audio_duration
         self.control_freq = control_freq
-        self.use_mel_spectrogram = use_mel_spectrogram
-        self.n_mels = n_mels
         self.max_steps = max_steps
         self.sample_rate = 44100
+        self.use_optimized_scene = use_optimized_scene
+        self.compound_group_size = compound_group_size
+        self.use_mimi = use_mimi
+        self.max_audio_distance = max_audio_distance
+        self.ultrasonic_max_range = ultrasonic_max_range
+        self.num_ultrasonic_sensors = num_ultrasonic_sensors
 
-        # Observation space: mel-spectrogram + robot state
-        if use_mel_spectrogram:
-            mel_shape = (n_mels, int(audio_duration * 100), 2)  # Approx time frames
-            robot_state_shape = (6,)  # x, y, z, vx, vy, heading
+        # HRTF path (default to test dataset)
+        if hrtf_path is None:
+            # Assume project root structure
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+            hrtf_path = os.path.join(project_root, "assets", "hrtf", "test_kemar")
+        self.hrtf_path = hrtf_path
 
-            self.observation_space = gym.spaces.Dict({
-                "audio": gym.spaces.Box(
-                    low=-80.0, high=0.0,
-                    shape=mel_shape,
-                    dtype=np.float32
-                ),
-                "state": gym.spaces.Box(
-                    low=-np.inf, high=np.inf,
-                    shape=robot_state_shape,
-                    dtype=np.float32
-                ),
-            })
-        else:
-            # Raw audio observation
-            audio_samples = int(audio_duration * self.sample_rate)
-            self.observation_space = gym.spaces.Dict({
-                "audio": gym.spaces.Box(
-                    low=-1.0, high=1.0,
-                    shape=(audio_samples, 2),
-                    dtype=np.float32
-                ),
-                "state": gym.spaces.Box(
-                    low=-np.inf, high=np.inf,
-                    shape=(6,),
-                    dtype=np.float32
-                ),
-            })
+        # Observation space: Mimi codes + ultrasonic + robot state
+        # Mimi codes shape: (32, time_frames) where time_frames ≈ audio_duration * 12.5
+        # Note: Mimi uses 32 codebooks (not 8 as initially thought)
+        mimi_time_frames = int(audio_duration * 12.5) + 2  # 12.5 Hz frame rate + margin
+
+        self.observation_space = gym.spaces.Dict({
+            "audio_codes": gym.spaces.Box(
+                low=0, high=2047,  # Mimi codebook size
+                shape=(32, mimi_time_frames),
+                dtype=np.int64
+            ),
+            "ultrasonic": gym.spaces.Box(
+                low=0.0, high=ultrasonic_max_range,
+                shape=(num_ultrasonic_sensors,),
+                dtype=np.float32
+            ),
+            "state": gym.spaces.Box(
+                low=-np.inf, high=np.inf,
+                shape=(6,),  # x, y, z, vx, vy, heading
+                dtype=np.float32
+            ),
+        })
 
         # Action space: continuous 2D velocity control
         self.action_space = gym.spaces.Box(
@@ -119,12 +137,6 @@ class DataCenterNavigationEnv(gym.Env):
             dtype=np.float32
         )
 
-        # Initialize MuJoCo simulation
-        self._init_mujoco()
-
-        # Initialize sound tracker
-        self.sound_tracker = None
-
         # Episode state
         self.current_step = 0
         self.goal_position = None
@@ -132,6 +144,9 @@ class DataCenterNavigationEnv(gym.Env):
 
         # RNG
         self._np_random = np.random.RandomState(seed)
+
+        # Initialize MuJoCo simulation (this creates audio_generator and ultrasonic_sensors)
+        self._init_mujoco()
 
     def _init_mujoco(self):
         """Initialize MuJoCo model and data."""
@@ -143,8 +158,23 @@ class DataCenterNavigationEnv(gym.Env):
             seed=0,
         )
 
-        # Build XML
-        xml = build_complex_scene_xml(dynamic_objects, moving_robots, floor_size=(self.room_size[0], self.room_size[1]))
+        # Build XML (optimized or standard)
+        if self.use_optimized_scene:
+            # Use optimized scene builder (compound bodies, visual-only geoms)
+            xml = build_optimized_scene_xml(
+                dynamic_objects,
+                moving_robots,
+                floor_size=(self.room_size[0], self.room_size[1]),
+                use_compound_bodies=True,
+                compound_group_size=self.compound_group_size
+            )
+        else:
+            # Use standard scene builder (individual bodies)
+            xml = build_complex_scene_xml(
+                dynamic_objects,
+                moving_robots,
+                floor_size=(self.room_size[0], self.room_size[1])
+            )
 
         # Load model
         self.model = mujoco.MjModel.from_xml_string(xml)
@@ -153,8 +183,25 @@ class DataCenterNavigationEnv(gym.Env):
         # Get robot body ID
         self.robot_body_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, "robot_1")
 
-        # Store sound specs
-        self.continuous_sounds = continuous_sounds
+        # Initialize audio observation generator
+        self.audio_generator = AudioObservationGenerator(
+            continuous_sounds=continuous_sounds,
+            hrtf_path=self.hrtf_path,
+            audio_duration=self.audio_duration,
+            sample_rate=self.sample_rate,
+            max_audio_distance=self.max_audio_distance,
+            use_mimi=self.use_mimi,
+            mimi_parallel=False,  # Parallel is slower for short clips
+        )
+
+        # Initialize ultrasonic sensor array
+        self.ultrasonic_sensors = UltrasonicSensorArray(
+            model=self.model,
+            robot_body_id=self.robot_body_id,
+            max_range=self.ultrasonic_max_range,
+            sensor_height=0.15,  # Robot height
+            num_sensors=self.num_ultrasonic_sensors,
+        )
 
     def _get_robot_state(self) -> np.ndarray:
         """Get current robot state.
@@ -177,17 +224,42 @@ class DataCenterNavigationEnv(gym.Env):
         """Generate audio observation from current state.
 
         Returns:
-            Mel-spectrogram or raw audio array
+            Mimi codes array of shape (32, time_frames), zero-padded to match observation space
         """
-        # For now, generate silent audio as placeholder
-        # TODO: Implement proper audio rendering with moving sound tracker
-        if self.use_mel_spectrogram:
-            # Return zeros of correct shape
-            mel_shape = (self.n_mels, int(self.audio_duration * 100), 2)
-            return np.zeros(mel_shape, dtype=np.float32)
-        else:
-            audio_samples = int(self.audio_duration * self.sample_rate)
-            return np.zeros((audio_samples, 2), dtype=np.float32)
+        # Get robot position and orientation
+        robot_pos = self.data.xpos[self.robot_body_id].copy()
+        robot_quat = self.data.xquat[self.robot_body_id].copy()
+
+        # Convert quaternion to heading angle (radians)
+        robot_heading = np.arctan2(
+            2 * (robot_quat[0] * robot_quat[3] + robot_quat[1] * robot_quat[2]),
+            1 - 2 * (robot_quat[2]**2 + robot_quat[3]**2)
+        )
+
+        # Generate audio observation (Mimi codes)
+        audio_codes = self.audio_generator.generate_observation(
+            robot_position=robot_pos,
+            robot_orientation=robot_heading,
+        )
+
+        # Pad to match observation space if needed
+        expected_shape = self.observation_space["audio_codes"].shape
+        if audio_codes.shape != expected_shape:
+            padded = np.zeros(expected_shape, dtype=np.int64)
+            # Copy actual codes into padded array
+            actual_time_frames = min(audio_codes.shape[1], expected_shape[1])
+            padded[:, :actual_time_frames] = audio_codes[:, :actual_time_frames]
+            return padded
+
+        return audio_codes
+
+    def _generate_ultrasonic_observation(self) -> np.ndarray:
+        """Generate ultrasonic sensor observation.
+
+        Returns:
+            Distance array of shape (num_sensors,)
+        """
+        return self.ultrasonic_sensors.read_distances(self.data)
 
     def reset(
         self,
@@ -217,7 +289,8 @@ class DataCenterNavigationEnv(gym.Env):
 
         # Get observation
         obs = {
-            "audio": self._generate_audio_observation(),
+            "audio_codes": self._generate_audio_observation(),
+            "ultrasonic": self._generate_ultrasonic_observation(),
             "state": self._get_robot_state(),
         }
 
@@ -258,10 +331,12 @@ class DataCenterNavigationEnv(gym.Env):
 
         # Get new state
         robot_state = self._get_robot_state()
-        audio_obs = self._generate_audio_observation()
+        audio_codes = self._generate_audio_observation()
+        ultrasonic = self._generate_ultrasonic_observation()
 
         obs = {
-            "audio": audio_obs,
+            "audio_codes": audio_codes,
+            "ultrasonic": ultrasonic,
             "state": robot_state,
         }
 
@@ -349,7 +424,7 @@ if __name__ == "__main__":
     env = DataCenterNavigationEnv(
         room_size=(30, 25, 4),
         num_racks=24,
-        use_mel_spectrogram=True,
+        use_mimi=True,
         max_steps=500,
         seed=42,
     )
@@ -361,7 +436,9 @@ if __name__ == "__main__":
     print("\nTesting random episode...")
     obs, info = env.reset()
     print(f"Initial state shape: {obs['state'].shape}")
-    print(f"Audio shape: {obs['audio'].shape}")
+    print(f"Audio codes shape: {obs['audio_codes'].shape}")
+    print(f"Ultrasonic shape: {obs['ultrasonic'].shape}")
+    print(f"Ultrasonic readings: {obs['ultrasonic']}")
     print(f"Goal position: {info['goal_position']}")
 
     total_reward = 0
