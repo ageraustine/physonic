@@ -156,7 +156,9 @@ class DataCenterNavigationEnv(gym.Env):
             ),
         })
 
-        # Action space: continuous 2D velocity control
+        # Action space: differential drive (forward speed, angular velocity)
+        # action[0]: forward speed in [-1, 1] → scaled to [-5, 5] m/s
+        # action[1]: angular velocity in [-1, 1] → scaled to [-π, π] rad/s
         self.action_space = gym.spaces.Box(
             low=np.array([-1.0, -1.0]),
             high=np.array([1.0, 1.0]),
@@ -347,7 +349,9 @@ class DataCenterNavigationEnv(gym.Env):
         """Execute one step.
 
         Args:
-            action: [vx, vy] velocity commands in [-1, 1], scaled to [-5, 5] m/s
+            action: [forward_speed, angular_velocity] in [-1, 1]
+                    forward_speed: scaled to [-5, 5] m/s
+                    angular_velocity: scaled to [-π, π] rad/s
 
         Returns:
             observation: Dict with 'audio' and 'state'
@@ -356,10 +360,23 @@ class DataCenterNavigationEnv(gym.Env):
             truncated: Whether episode was cut off
             info: Dictionary with step info
         """
-        # Apply action (velocity control)
-        vx, vy = action
-        self.data.ctrl[0] = vx * 10.0  # Increased to 10.0 for more power (was 5.0)
-        self.data.ctrl[1] = vy * 10.0  # Range: [-10, 10] with gear=1000 for massive torque
+        # Apply action (differential drive)
+        forward_speed, angular_velocity = action
+
+        # Get current heading from robot state
+        robot_state = self._get_robot_state()
+        heading = robot_state[5]  # heading angle in radians
+
+        # Convert differential drive to global velocities
+        # Robot moves in the direction it's facing
+        vx_global = forward_speed * np.cos(heading) * 5.0  # Scale to [-5, 5] m/s
+        vy_global = forward_speed * np.sin(heading) * 5.0
+        omega = angular_velocity * 2.0 * np.pi  # Scale to [-2π, 2π] rad/s (fast turning)
+
+        # Apply to velocity actuators
+        self.data.ctrl[0] = vx_global * 2.0  # × 2.0 with gear=1000 for power
+        self.data.ctrl[1] = vy_global * 2.0
+        self.data.ctrl[2] = omega * 3.0  # × 3.0 for faster rotation (matches ctrlrange=[-20, 20])
 
         # Step physics (multiple substeps for stability)
         steps_per_control = int(1.0 / (self.control_freq * self.model.opt.timestep))
@@ -387,9 +404,17 @@ class DataCenterNavigationEnv(gym.Env):
             delta_distance = self.previous_distance - current_distance
             reward = 10.0 * delta_distance
 
-            # Time penalty: small constant penalty to encourage faster completion
-            # This prevents the robot from hovering/idling
-            reward -= 0.01  # Small time cost
+            # Distance-dependent time penalty:
+            # - Far from goal (>5m): -0.01/step (encourages movement)
+            # - Near goal (<2m): 0.0 (allows hovering for fine-tuning)
+            # - In between: linear interpolation
+            if current_distance > 5.0:
+                reward -= 0.01  # Full time penalty when far
+            elif current_distance > 2.0:
+                # Linear interpolation: penalty decreases as robot gets closer
+                penalty_scale = (current_distance - 2.0) / 3.0  # 0.0 at 2m, 1.0 at 5m
+                reward -= 0.01 * penalty_scale
+            # else: no time penalty when very close (<2m) - hovering is fine!
 
         elif self.reward_shaping == "distance":
             # Original: distance penalty (always negative)
@@ -400,6 +425,9 @@ class DataCenterNavigationEnv(gym.Env):
 
         # Store for next step
         self.previous_distance = current_distance
+
+        # Note: Removed hovering penalty - differential drive naturally prevents hovering
+        # because robot must orient toward goal to get progress rewards
 
         # REMOVED: Proximity penalty (was counterproductive - prevented navigation learning)
         # Robot should learn obstacle avoidance naturally from collision penalties,

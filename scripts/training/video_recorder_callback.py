@@ -95,6 +95,7 @@ class VideoRecorderCallback(BaseCallback):
         self,
         continuous_sounds: List[ContinuousSoundSpec],
         robot_position: np.ndarray,
+        robot_heading: float,
         frame_duration: float,
     ) -> np.ndarray:
         """Render binaural audio for a single frame with complete acoustic physics.
@@ -102,6 +103,7 @@ class VideoRecorderCallback(BaseCallback):
         Args:
             continuous_sounds: List of continuous sound sources in the scene
             robot_position: Robot's 3D position [x, y, z]
+            robot_heading: Robot's heading angle in radians
             frame_duration: Duration of this frame in seconds
 
         Returns:
@@ -119,11 +121,11 @@ class VideoRecorderCallback(BaseCallback):
             robot_velocity = displacement / frame_duration  # m/s
         self.previous_robot_position = robot_position.copy()
 
-        # Create binaural microphone at robot position (robot "ears")
-        # Robot is facing along +X axis (orientation = 0)
+        # Create binaural microphone at robot position with actual heading
+        # Robot's ears rotate with its body - crucial for binaural cues!
         microphone = BinauralMicrophone(
             position=robot_position,
-            orientation=0.0,  # Facing forward along X axis
+            orientation=np.degrees(robot_heading),  # Convert radians to degrees
         )
 
         # Synthesize each continuous sound source
@@ -245,10 +247,10 @@ class VideoRecorderCallback(BaseCallback):
         # Get robot body ID for camera following
         robot_body_id = mujoco.mj_name2id(env.model, mujoco.mjtObj.mjOBJ_BODY, "robot_1")
 
-        # Get continuous sounds from environment (if available)
+        # Get continuous sounds from environment's audio generator
         continuous_sounds = []
-        if self.enable_audio and hasattr(env, 'continuous_sounds'):
-            continuous_sounds = env.continuous_sounds
+        if self.enable_audio and hasattr(env, 'audio_generator') and hasattr(env.audio_generator, 'continuous_sounds'):
+            continuous_sounds = env.audio_generator.continuous_sounds
             if self.verbose > 1:
                 print(f"  Found {len(continuous_sounds)} continuous sound sources")
 
@@ -260,11 +262,18 @@ class VideoRecorderCallback(BaseCallback):
             robot_pos = env.data.xpos[robot_body_id].copy()
             camera.lookat[:] = robot_pos  # Camera follows robot
 
+            # Get robot heading from quaternion
+            quat = env.data.xquat[robot_body_id]
+            robot_heading = np.arctan2(2 * (quat[0] * quat[3] + quat[1] * quat[2]),
+                                       1 - 2 * (quat[2]**2 + quat[3]**2))
+
             # Render binaural audio for this frame (if enabled)
+            # Audio rotates with robot heading - crucial for spatial perception!
             if self.enable_audio and continuous_sounds:
                 frame_audio = self._render_binaural_audio_frame(
                     continuous_sounds,
                     robot_pos,
+                    robot_heading,
                     frame_duration,
                 )
                 audio_buffer.append(frame_audio)
@@ -281,8 +290,8 @@ class VideoRecorderCallback(BaseCallback):
             frame_bgr = cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR)
 
             # Add sound source indicators (ripples) using proper MuJoCo projection
-            if hasattr(env, 'continuous_sounds'):
-                for sound_spec in env.continuous_sounds:
+            if hasattr(env, 'audio_generator') and hasattr(env.audio_generator, 'continuous_sounds'):
+                for sound_spec in env.audio_generator.continuous_sounds:
                     # Find the body/geom for this sound source
                     try:
                         body_id = mujoco.mj_name2id(env.model, mujoco.mjtObj.mjOBJ_BODY, sound_spec.source_id)

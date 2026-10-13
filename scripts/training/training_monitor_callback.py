@@ -149,12 +149,14 @@ class TrainingMonitorCallback(BaseCallback):
     def _render_binaural_audio_frame(
         self,
         robot_position: np.ndarray,
+        robot_heading: float,
         frame_duration: float,
     ) -> np.ndarray:
         """Render binaural audio for a single frame with complete acoustic physics.
 
         Args:
             robot_position: Robot's 3D position [x, y, z]
+            robot_heading: Robot's heading angle in radians
             frame_duration: Duration of this frame in seconds
 
         Returns:
@@ -172,10 +174,11 @@ class TrainingMonitorCallback(BaseCallback):
             robot_velocity = displacement / frame_duration  # m/s
         self.previous_robot_position = robot_position.copy()
 
-        # Create binaural microphone at robot position (robot "ears")
+        # Create binaural microphone at robot position with actual heading
+        # Robot's ears rotate with its body - crucial for binaural cues!
         microphone = BinauralMicrophone(
             position=robot_position,
-            orientation=0.0,  # Facing forward along X axis
+            orientation=np.degrees(robot_heading),  # Convert radians to degrees
         )
 
         # Synthesize each continuous sound source
@@ -266,15 +269,15 @@ class TrainingMonitorCallback(BaseCallback):
         self.frames_recorded = 0
         self.current_video_path = self.video_folder / f"training_rollout_{self.num_timesteps:08d}_steps.mp4"
 
-        # Get continuous sounds from environment (if available)
+        # Get continuous sounds from environment's audio generator
         self.continuous_sounds = []
         if self.enable_audio and hasattr(self.training_env, 'envs'):
             try:
                 env = self.training_env.envs[0]
                 while hasattr(env, 'env'):
                     env = env.env
-                if hasattr(env, 'continuous_sounds'):
-                    self.continuous_sounds = env.continuous_sounds
+                if hasattr(env, 'audio_generator') and hasattr(env.audio_generator, 'continuous_sounds'):
+                    self.continuous_sounds = env.audio_generator.continuous_sounds
                     if self.verbose > 1:
                         print(f"  Found {len(self.continuous_sounds)} continuous sound sources")
             except:
@@ -298,11 +301,18 @@ class TrainingMonitorCallback(BaseCallback):
             robot_pos = self.env_data.xpos[robot_body_id].copy()
             self.camera.lookat[:] = robot_pos
 
+            # Get robot heading from quaternion
+            quat = self.env_data.xquat[robot_body_id]
+            robot_heading = np.arctan2(2 * (quat[0] * quat[3] + quat[1] * quat[2]),
+                                       1 - 2 * (quat[2]**2 + quat[3]**2))
+
             # Render binaural audio for this frame (if enabled)
+            # Audio rotates with robot heading - crucial for spatial perception!
             if self.enable_audio and self.continuous_sounds:
                 frame_duration = 1.0 / self.fps
                 frame_audio = self._render_binaural_audio_frame(
                     robot_pos,
+                    robot_heading,
                     frame_duration,
                 )
                 self.recording_audio.append(frame_audio)
@@ -324,8 +334,8 @@ class TrainingMonitorCallback(BaseCallback):
                 while hasattr(env, 'env'):
                     env = env.env
 
-                if hasattr(env, 'continuous_sounds'):
-                    for sound_spec in env.continuous_sounds:
+                if hasattr(env, 'audio_generator') and hasattr(env.audio_generator, 'continuous_sounds'):
+                    for sound_spec in env.audio_generator.continuous_sounds:
                         try:
                             body_id = mujoco.mj_name2id(self.env_model, mujoco.mjtObj.mjOBJ_BODY, sound_spec.source_id)
                             sound_pos = self.env_data.xpos[body_id]
