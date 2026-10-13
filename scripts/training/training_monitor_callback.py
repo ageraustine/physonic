@@ -127,13 +127,14 @@ class TrainingMonitorCallback(BaseCallback):
             # Create renderer
             self.renderer = mujoco.Renderer(self.env_model, width=480, height=480)
 
-            # Setup camera (close third-person view)
+            # Setup camera (following the robot, wide view)
             self.camera = mujoco.MjvCamera()
             self.camera.type = mujoco.mjtCamera.mjCAMERA_FREE
-            self.camera.azimuth = 135
-            self.camera.elevation = -35  # Less steep for better robot view
-            self.camera.distance = 8      # Much closer (was 20)
-            self.camera.lookat[:] = [15, 12.5, 0.6]  # Robot height
+            self.camera.azimuth = 135      # 45° from diagonal
+            self.camera.elevation = -45    # Higher angle to see more of environment
+            self.camera.distance = 15      # Pull back to see more (was 8)
+            # Note: lookat will be updated each frame to follow robot
+            self.camera.lookat[:] = [15, 12.5, 0.6]  # Initial position
 
             if self.verbose > 0:
                 print(f"✓ Training monitor initialized")
@@ -364,6 +365,17 @@ class TrainingMonitorCallback(BaseCallback):
             cv2.putText(frame_bgr, f"Frame: {self.frames_recorded}/{self.record_duration}", (10, 60),
                        font, 0.6, (0, 255, 0), 2)
 
+            # Show distance to goal
+            if hasattr(self.training_env, 'envs'):
+                env = self.training_env.envs[0]
+                while hasattr(env, 'env'):
+                    env = env.env
+                if hasattr(env, 'goal_position'):
+                    goal_pos = env.goal_position
+                    distance = np.linalg.norm(robot_pos[:2] - goal_pos[:2])
+                    cv2.putText(frame_bgr, f"Goal Distance: {distance:.1f}m", (10, 90),
+                               font, 0.5, (255, 255, 0), 1)
+
             # Add legend
             cv2.putText(frame_bgr, "Sound Sources:", (10, 430), font, 0.5, (255, 255, 255), 1)
             cv2.circle(frame_bgr, (20, 450), 5, (255, 100, 100), -1)
@@ -547,18 +559,20 @@ class RealTimeViewer(BaseCallback):
             self.env_model = env.model
             self.env_data = env.data
 
-            self.renderer = mujoco.Renderer(self.env_model, width=640, height=640)
+            # Use 480×480 to match MuJoCo model's offscreen framebuffer
+            self.renderer = mujoco.Renderer(self.env_model, width=480, height=480)
 
-            # Setup camera (close third-person view)
+            # Setup camera (following robot, wide view to see environment)
             self.camera = mujoco.MjvCamera()
             self.camera.type = mujoco.mjtCamera.mjCAMERA_FREE
-            self.camera.azimuth = 135
-            self.camera.elevation = -35  # Less steep for better robot view
-            self.camera.distance = 8      # Much closer (was 20)
-            self.camera.lookat[:] = [15, 12.5, 0.6]  # Robot height
+            self.camera.azimuth = 135      # 45° from diagonal
+            self.camera.elevation = -45    # Higher angle to see more of environment
+            self.camera.distance = 15      # Pull back to see more environment
+            # Note: lookat will be updated each frame to follow robot
+            self.camera.lookat[:] = [15, 12.5, 0.6]  # Initial position
 
             cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
-            cv2.resizeWindow(self.window_name, 640, 640)
+            cv2.resizeWindow(self.window_name, 480, 480)  # Match renderer size
 
             if self.verbose > 0:
                 print(f"✓ Real-time viewer initialized")
@@ -584,6 +598,11 @@ class RealTimeViewer(BaseCallback):
             return True
 
         try:
+            # Update camera to follow robot
+            robot_body_id = mujoco.mj_name2id(self.env_model, mujoco.mjtObj.mjOBJ_BODY, "robot_1")
+            robot_pos = self.env_data.xpos[robot_body_id].copy()
+            self.camera.lookat[:] = robot_pos
+
             # Render current state
             opt = mujoco.MjvOption()
             mujoco.mjv_updateScene(
@@ -595,10 +614,27 @@ class RealTimeViewer(BaseCallback):
             # Convert to BGR
             frame_bgr = cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR)
 
-            # Add overlay
+            # Add overlay with environment info
             font = cv2.FONT_HERSHEY_SIMPLEX
             cv2.putText(frame_bgr, f"Training Step: {self.num_timesteps:,}", (10, 30),
-                       font, 0.8, (0, 255, 0), 2)
+                       font, 0.7, (0, 255, 0), 2)
+
+            # Show robot position and distance to goal
+            if hasattr(self.training_env, 'envs'):
+                env = self.training_env.envs[0]
+                while hasattr(env, 'env'):
+                    env = env.env
+                if hasattr(env, 'goal_position'):
+                    goal_pos = env.goal_position
+                    distance = np.linalg.norm(robot_pos[:2] - goal_pos[:2])
+                    cv2.putText(frame_bgr, f"Distance to Goal: {distance:.1f}m", (10, 60),
+                               font, 0.6, (255, 255, 0), 2)
+
+                    # Show if goal sound is enabled
+                    if hasattr(env, 'use_goal_sound') and env.use_goal_sound:
+                        cv2.putText(frame_bgr, "Goal Sound: 1kHz Beep", (10, 90),
+                                   font, 0.5, (100, 200, 255), 1)
+
             cv2.putText(frame_bgr, f"Press 'q' to close", (10, frame_bgr.shape[0] - 20),
                        font, 0.6, (0, 255, 255), 2)
 

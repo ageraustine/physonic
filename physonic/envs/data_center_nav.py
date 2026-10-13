@@ -22,12 +22,13 @@ from physonic.environments.dynamic_scene import (
 from physonic.environments.scene_optimizer import build_optimized_scene_xml
 from physonic.envs.audio_observation import AudioObservationGenerator
 from physonic.envs.ultrasonic_sensor import UltrasonicSensorArray
+from physonic.synthesis.continuous import ContinuousSoundSpec
 
 
 class DataCenterNavigationEnv(gym.Env):
     """Gymnasium environment for robot navigation in complex data center.
 
-    **Task**: Navigate to randomly placed goal positions using acoustic cues and ultrasonic sensors.
+    **Task**: Navigate to goal position using acoustic cues (1kHz beep) and ultrasonic sensors.
 
     **Observations**:
         - Audio codes: (32, T) - Mimi-compressed binaural audio (T ≈ 6-8 frames for 0.5s)
@@ -37,11 +38,18 @@ class DataCenterNavigationEnv(gym.Env):
     **Actions**:
         - Continuous 2D velocity: (2,) - [vx, vy] in [-1, 1] m/s
 
-    **Rewards**:
-        - +10 for reaching goal (within 1m)
-        - -0.01 * distance_to_goal (every step)
-        - -5 for collision with obstacles
-        - -10 for leaving bounds
+    **Rewards** (configurable via reward_shaping parameter):
+        - **Progress mode (default)**: +10.0 * delta_distance (positive when moving closer)
+        - **Distance mode**: -0.01 * distance_to_goal (original, always negative)
+        - **Sparse mode**: No shaping (only terminal rewards)
+        - Goal reached: +100.0 (default, configurable)
+        - Collision: -20.0 (default, configurable)
+        - Out of bounds: -50.0 (default, configurable)
+
+    **Audio Navigation**:
+        - Goal emits distinctive 1kHz pulsing beep (2Hz modulation)
+        - Server racks emit 120Hz hum (ambient background)
+        - Robot must use audio to locate goal among ~24 sound sources
 
     **Episode**:
         - Terminates when goal reached or max_steps exceeded
@@ -67,6 +75,12 @@ class DataCenterNavigationEnv(gym.Env):
         # Ultrasonic sensor settings
         ultrasonic_max_range: float = 5.0,  # Max ultrasonic range (meters)
         num_ultrasonic_sensors: int = 4,  # Number of ultrasonic sensors (4 or 8)
+        # Reward settings (NEW)
+        use_goal_sound: bool = True,  # Add distinctive sound at goal position
+        reward_shaping: str = "progress",  # "progress", "distance", or "sparse"
+        goal_bonus: float = 100.0,  # Reward for reaching goal
+        collision_penalty: float = 20.0,  # Penalty for collision
+        bounds_penalty: float = 50.0,  # Penalty for out of bounds
     ):
         """Initialize data center navigation environment.
 
@@ -84,6 +98,11 @@ class DataCenterNavigationEnv(gym.Env):
             hrtf_path: Path to HRTF dataset (defaults to assets/hrtf/test_kemar)
             ultrasonic_max_range: Maximum ultrasonic sensor range (meters)
             num_ultrasonic_sensors: Number of ultrasonic sensors (4 or 8)
+            use_goal_sound: Add distinctive sound at goal position (enables audio navigation)
+            reward_shaping: Reward shaping type - "progress" (recommended), "distance", or "sparse"
+            goal_bonus: Reward for reaching goal (default: 100.0)
+            collision_penalty: Penalty for collision (default: 20.0)
+            bounds_penalty: Penalty for out of bounds (default: 50.0)
         """
         super().__init__()
 
@@ -99,6 +118,13 @@ class DataCenterNavigationEnv(gym.Env):
         self.max_audio_distance = max_audio_distance
         self.ultrasonic_max_range = ultrasonic_max_range
         self.num_ultrasonic_sensors = num_ultrasonic_sensors
+
+        # Reward settings
+        self.use_goal_sound = use_goal_sound
+        self.reward_shaping = reward_shaping
+        self.goal_bonus = goal_bonus
+        self.collision_penalty = collision_penalty
+        self.bounds_penalty = bounds_penalty
 
         # HRTF path (default to test dataset)
         if hrtf_path is None:
@@ -141,6 +167,7 @@ class DataCenterNavigationEnv(gym.Env):
         self.current_step = 0
         self.goal_position = None
         self.robot_start_position = None
+        self.previous_distance = None  # For progress-based reward shaping
 
         # RNG
         self._np_random = np.random.RandomState(seed)
@@ -284,6 +311,13 @@ class DataCenterNavigationEnv(gym.Env):
         # Set random goal position
         self.goal_position = self._sample_free_position()
 
+        # Add goal sound source (for audio-based navigation)
+        if self.use_goal_sound:
+            self._add_goal_sound(self.goal_position)
+
+        # Initialize previous distance for progress tracking
+        self.previous_distance = self._distance_to_goal()
+
         # Reset step counter
         self.current_step = 0
 
@@ -297,6 +331,8 @@ class DataCenterNavigationEnv(gym.Env):
         info = {
             "goal_position": self.goal_position,
             "distance_to_goal": self._distance_to_goal(),
+            "reward_shaping": self.reward_shaping,
+            "goal_sound_enabled": self.use_goal_sound,
         }
 
         return obs, info
@@ -340,24 +376,37 @@ class DataCenterNavigationEnv(gym.Env):
             "state": robot_state,
         }
 
-        # Calculate reward
-        distance = self._distance_to_goal()
-        reward = -0.01 * distance  # Distance penalty
+        # Calculate reward using configurable shaping
+        current_distance = self._distance_to_goal()
+
+        if self.reward_shaping == "progress":
+            # Progress-based: reward getting closer, penalize moving away
+            delta_distance = self.previous_distance - current_distance
+            reward = 10.0 * delta_distance
+        elif self.reward_shaping == "distance":
+            # Original: distance penalty (always negative)
+            reward = -0.01 * current_distance
+        else:  # "sparse"
+            # Sparse: no shaping, only terminal rewards
+            reward = 0.0
+
+        # Store for next step
+        self.previous_distance = current_distance
 
         # Check if goal reached
         terminated = False
-        if distance < 1.0:  # Within 1 meter
-            reward += 10.0
+        if current_distance < 1.0:  # Within 1 meter
+            reward += self.goal_bonus
             terminated = True
 
         # Check for collisions (simple: check if robot is too low)
         if robot_state[2] < 0.1:  # Robot fell or collided
-            reward -= 5.0
+            reward -= self.collision_penalty
             terminated = True
 
         # Check bounds
         if not self._in_bounds(robot_state[:2]):
-            reward -= 10.0
+            reward -= self.bounds_penalty
             terminated = True
 
         # Truncate if max steps
@@ -365,8 +414,10 @@ class DataCenterNavigationEnv(gym.Env):
 
         info = {
             "goal_position": self.goal_position,
-            "distance_to_goal": distance,
-            "is_success": distance < 1.0,
+            "distance_to_goal": current_distance,
+            "is_success": current_distance < 1.0,
+            "reward_shaping": self.reward_shaping,
+            "goal_sound_enabled": self.use_goal_sound,
         }
 
         return obs, reward, terminated, truncated, info
@@ -405,6 +456,28 @@ class DataCenterNavigationEnv(gym.Env):
         x, y = position
         return (0 < x < self.room_size[0] and
                 0 < y < self.room_size[1])
+
+    def _add_goal_sound(self, position: np.ndarray) -> None:
+        """Add distinctive sound at goal position for audio-based navigation.
+
+        Args:
+            position: Goal position [x, y, z]
+        """
+        # Create distinctive beep sound (very different from 120Hz server hum)
+        goal_sound = ContinuousSoundSpec(
+            source_id="goal_beacon",
+            sound_type="beep",  # Alert-type sound
+            fundamental_freq=1000.0,  # 1kHz (vs 120Hz servers) - highly distinctive
+            harmonics=[1.0, 0.5, 0.3],  # Rich harmonic content
+            noise_amount=0.0,  # Pure tones for clarity
+            modulation_freq=2.0,  # 2Hz pulsing (easy to detect)
+            modulation_depth=0.8,  # Strong modulation (amplitude varies)
+            position=tuple(position),
+            volume=2.0,  # Louder than ambient servers
+        )
+
+        # Add to audio generator's continuous sounds
+        self.audio_generator.continuous_sounds.append(goal_sound)
 
     def render(self):
         """Render environment (not implemented)."""

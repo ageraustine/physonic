@@ -6,7 +6,7 @@
 
 **Physonic** generates realistic acoustic training data for robot perception systems by simulating physics-based contact sounds. It combines MuJoCo rigid-body dynamics with modal synthesis to produce synchronized audio, physics state, and ground truth labels—ideal for training robots to understand their environment through sound.
 
-https://github.com/user-attachments/assets/example-video-placeholder.mp4
+https://github.com/gcxrightsify/assets/assets/training_rollout_00001000_steps.mp4
 
 *Example: Multi-object collision with binaural spatial audio and room acoustics*
 
@@ -61,6 +61,7 @@ Modern robots need to perceive their environment through **multiple modalities**
 | **Room Acoustics** | ✅ | Early reflections + late reverb (17 room templates) |
 | **Dataset Export** | ✅ | LeRobotDataset format (Parquet + FLAC + MP4) |
 | **Video Rendering** | ✅ | Multi-camera RGB + binaural audio (H.264 + AAC) |
+| **Photorealistic Rendering** | ✅ | USD export with PBR materials (Isaac Sim, Blender, Omniverse) |
 | **RL Environments** | ✅ | Gymnasium integration (3 acoustic perception tasks) |
 | **Neural Audio Codec** | ✅ | Mimi compression (353x smaller observations) |
 | **Ultrasonic Sensors** | ✅ | 4-way distance sensing for navigation |
@@ -119,6 +120,94 @@ pip install "transformers>=4.44.0,<4.46.0"
 ```
 
 See `physonic/codecs/README.md` for details.
+
+---
+
+## Audio-Based Navigation (NEW!)
+
+The data center navigation environment now features **true audio-based navigation** with a goal beacon that emits a distinctive sound.
+
+### 🎯 How It Works
+
+**Goal Sound**:
+- **1kHz pulsing beep** (2Hz modulation) at goal position
+- **Very different** from 120Hz server rack ambient hum
+- **Louder** than background (2x volume)
+- Robot must **use audio** to locate goal among ~24 sound sources
+
+**Observation Space**:
+```python
+obs = {
+    "audio_codes": (32, 8),    # Mimi-compressed binaural audio
+    "ultrasonic": (4,),         # Distance sensors (front/left/right/back)
+    "state": (6,),              # Position, velocity, heading
+}
+```
+
+### 🎮 Reward Shaping Options
+
+**Three modes** (configurable via `reward_shaping` parameter):
+
+| Mode | Description | When to Use |
+|------|-------------|-------------|
+| **`progress`** (default) | `+10.0 × (prev_dist - curr_dist)` - Positive when moving closer | ✅ **Recommended** - Fast training, good shaping |
+| **`distance`** | `-0.01 × distance` - Always negative until goal | Legacy mode, slow training |
+| **`sparse`** | No shaping, only terminal rewards | Research, no bias, very slow |
+
+**Terminal Rewards** (all modes):
+- Goal reached: **+100.0** (configurable)
+- Collision: **-20.0** (4x stronger than before!)
+- Out of bounds: **-50.0** (5x stronger than before!)
+
+### 📊 Example Usage
+
+```python
+from physonic.envs import DataCenterNavigationEnv
+
+# Default: Progress-based with goal sound (recommended)
+env = DataCenterNavigationEnv(
+    room_size=(30, 25, 4),
+    num_racks=24,
+    use_goal_sound=True,      # Enable audio navigation
+    reward_shaping="progress", # Progress-based rewards
+    goal_bonus=100.0,          # Customize rewards
+    collision_penalty=20.0,
+    bounds_penalty=50.0,
+)
+
+# Sparse rewards (harder, no shaping bias)
+env = DataCenterNavigationEnv(
+    reward_shaping="sparse",
+    use_goal_sound=True,
+)
+
+# Legacy distance-based (not recommended)
+env = DataCenterNavigationEnv(
+    reward_shaping="distance",
+    use_goal_sound=True,
+)
+
+# Disable goal sound (not recommended - defeats audio navigation!)
+env = DataCenterNavigationEnv(
+    use_goal_sound=False,  # Robot can't use audio to find goal
+)
+```
+
+### 🧪 Why This Matters
+
+**Before fixes**:
+- ❌ Goal was silent → audio useless for navigation
+- ❌ Collision penalty too weak (-5 vs -150 cumulative)
+- ❌ No progress feedback → slow learning
+- ❌ Robot could ignore audio observations entirely
+
+**After fixes**:
+- ✅ Goal emits distinctive 1kHz beep → audio essential
+- ✅ Collision penalty significant (6.7% of total reward)
+- ✅ Immediate feedback for good actions → fast learning
+- ✅ Robot must use audio to navigate efficiently
+
+See `docs/REWARD_ANALYSIS.md` for full technical details and ablation study recommendations.
 
 ---
 
@@ -188,6 +277,98 @@ All effects are **physically grounded** and match real-world acoustic theory.
 
 ---
 
+## Photorealistic Rendering (NEW!)
+
+Physonic now supports **USD (Universal Scene Description) export** for photorealistic rendering in professional tools like **NVIDIA Isaac Sim**, **Blender**, and **Omniverse**.
+
+### 🎨 Features
+
+- **PBR Materials**: Physically-based rendering with metallic/roughness workflow
+- **Data Center Presets**: Server racks, floors, LED panels with realistic properties
+- **Professional Lighting**: Overhead panel grid with cool white illumination (2000 lux)
+- **Industry Standard**: USD format compatible with major rendering engines
+
+### 🖼️ Material Presets
+
+| Material | Base Color | Metallic | Roughness | Emissive |
+|----------|------------|----------|-----------|----------|
+| Server Rack | Dark Gray (0.1, 0.1, 0.12) | 0.8 | 0.3 | None |
+| Front Panel | Black (0.05, 0.05, 0.05) | 0.9 | 0.2 | Blue LED (0.0, 0.3, 0.6) |
+| Raised Floor | Light Gray (0.85, 0.85, 0.88) | 0.0 | 0.6 | None |
+| Robot Body | Orange (1.0, 0.4, 0.0) | 0.7 | 0.4 | None |
+
+### 🚀 Usage
+
+Export any MuJoCo environment to USD format:
+
+```python
+from physonic.envs import DataCenterNavigationEnv
+from physonic.render.usd_exporter import USDSceneExporter
+
+# Create environment
+env = DataCenterNavigationEnv(
+    room_size=(30, 25, 4),
+    num_racks=24,
+    use_mimi=True,
+    seed=42,
+)
+
+# Export to USD
+exporter = USDSceneExporter(
+    output_dir="outputs/usd_scenes",
+    use_instancing=True,
+)
+
+usd_path = exporter.export_scene(
+    model=env.model,
+    data=env.data,
+    scene_name="datacenter_photorealistic",
+    camera_position=(20, 15, 8),
+    camera_target=(15, 12.5, 0),
+)
+```
+
+### 🎬 Rendering Options
+
+**1. NVIDIA Isaac Sim** (Real-time RTX):
+```bash
+# Open Isaac Sim
+# File > Open > outputs/usd_scenes/datacenter_photorealistic.usda
+# Real-time photorealistic rendering with RTX ray tracing
+```
+
+**2. Blender** (Free, offline rendering):
+```bash
+# Install USD addon
+# File > Import > Universal Scene Description (.usd)
+# Select Cycles renderer for photorealistic output
+```
+
+**3. NVIDIA Omniverse**:
+```bash
+# Drag USD file into Omniverse viewport
+# Automatic PBR material and lighting setup
+```
+
+### 📸 What You Get
+
+- **Lighting**: 12-light overhead grid (4×3 layout) with realistic intensity
+- **Materials**: PBR shaders with proper metallic/roughness values
+- **Camera**: Pre-positioned for optimal viewing angle
+- **Geometry**: All MuJoCo bodies exported as USD primitives
+- **Scale**: Physically accurate dimensions (1 unit = 1 meter)
+
+### 🎯 Use Cases
+
+- **Marketing materials**: High-quality renders for presentations
+- **Visualization**: Understand complex data center layouts
+- **Dataset augmentation**: Combine physics simulation with photorealistic rendering
+- **Multi-modal training**: Train vision+audio models with realistic visuals
+
+See `test_usd_export.py` for a complete example.
+
+---
+
 ## Installation
 
 ### Prerequisites
@@ -197,7 +378,7 @@ All effects are **physically grounded** and match real-world acoustic theory.
 ### Quick Install
 ```bash
 # Clone repository
-git clone https://github.com/ageraustine/physonic.git
+git clone https://github.com/gcxrightsify/physonic.git
 cd physonic
 
 # Create virtual environment
@@ -552,10 +733,10 @@ from datasets import load_dataset
 dataset = load_dataset('parquet', data_dir='datasets/physonic_v1/data')
 
 # Or push to Hugging Face Hub
-dataset.push_to_hub('ageraustine/physonic-warehouse-v1')
+dataset.push_to_hub('gcxrightsify/physonic-warehouse-v1')
 
 # Later, load from Hub
-dataset = load_dataset('ageraustine/physonic-warehouse-v1')
+dataset = load_dataset('gcxrightsify/physonic-warehouse-v1')
 ```
 
 ### Example 8: Interactive RL Environment Demo
@@ -1134,7 +1315,7 @@ If you use Physonic in your research, please cite:
   title = {Physonic: Physics-Driven Acoustic Synthesis for Robot Perception},
   author = {Ager Austen},
   year = {2025},
-  url = {https://github.com/ageraustine/physonic},
+  url = {https://github.com/gcxrightsify/physonic},
   note = {Version 1.0}
 }
 ```
@@ -1150,7 +1331,7 @@ Contributions are welcome! Areas of interest:
 - **Environments**: Implement procedural scene generation
 - **RL Tasks**: Design acoustic perception benchmarks
 
-Please open an issue or pull request on [GitHub](https://github.com/ageraustine/physonic).
+Please open an issue or pull request on [GitHub](https://github.com/gcxrightsify/physonic).
 
 ---
 
@@ -1173,8 +1354,8 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Support
 
 - **Documentation**: See [CLAUDE.md](CLAUDE.md) for detailed architecture and development guide
-- **Issues**: [GitHub Issues](https://github.com/ageraustine/physonic/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/ageraustine/physonic/discussions)
+- **Issues**: [GitHub Issues](https://github.com/gcxrightsify/physonic/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/gcxrightsify/physonic/discussions)
 
 ---
 
