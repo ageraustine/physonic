@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Tuple, List, Optional
 import numpy as np
 
-from physonic.environments.objects import StaticObjectSpec
+from physonic.environments.objects import StaticObjectSpec, build_static_object_xml
 from physonic.synthesis.continuous import ContinuousSoundSpec
 from physonic.synthesis.alerts import AlertSoundSpec
 
@@ -56,8 +56,8 @@ class MovingRobotSpec:
     start_position: Tuple[float, float, float]
     end_position: Tuple[float, float, float]
     speed: float  # m/s
-    size: Tuple[float, float, float] = (0.5, 0.5, 0.3)  # Small robot
-    mass: float = 50.0
+    size: Tuple[float, float, float] = (1.2, 1.2, 1.2)  # Much larger for visibility
+    mass: float = 120.0
 
     # Sound
     motor_sound_freq: float = 80.0  # Hz
@@ -128,12 +128,17 @@ def build_moving_robot_xml(spec: MovingRobotSpec) -> str:
     iyy = spec.mass / 12 * (width**2 + height**2)
     izz = spec.mass / 12 * (width**2 + depth**2)
 
+    # Robot with bright marker on top for visibility
     xml = f"""
-    <!-- {spec.name} - MOVING ROBOT -->
+    <!-- {spec.name} - MOVING ROBOT (Bright Orange with Red Marker) -->
     <body name="{spec.name}" pos="{x:.3f} {y:.3f} {z:.3f}">
       <inertial pos="0 0 0" mass="{spec.mass:.2f}" diaginertia="{ixx:.3f} {iyy:.3f} {izz:.3f}" />
-      <geom type="box" size="{width/2:.3f} {depth/2:.3f} {height/2:.3f}"
-            rgba="0.3 0.8 0.3 1" friction="0.5 0.005 0.0001" />
+      <!-- Main robot body (sphere) -->
+      <geom type="sphere" size="{width/2:.3f}"
+            rgba="1.0 0.5 0.0 1" friction="0.5 0.005 0.0001" />
+      <!-- Bright marker on top -->
+      <geom type="cylinder" size="0.15 0.3" pos="0 0 {height/2 + 0.3:.3f}"
+            rgba="1.0 0.0 0.0 1" />
       <joint name="{spec.name}_slide_x" type="slide" axis="1 0 0" limited="false" damping="10" />
       <joint name="{spec.name}_slide_y" type="slide" axis="0 1 0" limited="false" damping="10" />
       <joint name="{spec.name}_hinge" type="hinge" axis="0 0 1" limited="false" damping="1" />
@@ -143,14 +148,20 @@ def build_moving_robot_xml(spec: MovingRobotSpec) -> str:
 
 
 def build_complex_scene_xml(
-    dynamic_objects: List[DynamicObjectSpec],
+    static_objects: List[StaticObjectSpec],
     moving_robots: List[MovingRobotSpec],
     floor_size: Tuple[float, float] = (30, 25),
 ) -> str:
-    """Build complete MuJoCo XML for complex dynamic scene.
+    """Build complete MuJoCo XML for modern data center scene with static equipment.
+
+    Creates a realistic data center where:
+    - Server racks are static (bolted to raised floor, can't fall)
+    - Cooling units are mounted
+    - Robots can move freely
+    - Professional lighting and materials
 
     Args:
-        dynamic_objects: List of dynamic objects
+        static_objects: List of static objects (racks, cooling units)
         moving_robots: List of moving robots
         floor_size: (width, depth) of floor
 
@@ -172,14 +183,16 @@ def build_complex_scene_xml(
         '',
         '  <!-- Asset definitions -->',
         '  <asset>',
-        '    <texture name="texplane" type="2d" builtin="checker" rgb1="0.4 0.4 0.5" rgb2="0.3 0.3 0.4" width="256" height="256" />',
-        '    <material name="matplane" reflectance="0.2" texture="texplane" texrepeat="3 3" />',
+        '    <!-- Raised floor tiles (anti-static, light gray) -->',
+        '    <texture name="texplane" type="2d" builtin="checker" rgb1="0.75 0.75 0.78" rgb2="0.7 0.7 0.73" width="512" height="512" />',
+        '    <material name="matplane" reflectance="0.4" texture="texplane" texrepeat="15 15" />',
         '  </asset>',
         '',
         '  <worldbody>',
-        '    <!-- Lighting -->',
-        '    <light directional="true" diffuse="1.2 1.2 1.2" specular="0.3 0.3 0.3" pos="0 0 6" dir="0 0 -1" castshadow="false" />',
-        '    <light directional="true" diffuse="0.6 0.6 0.6" specular="0.1 0.1 0.1" pos="15 15 6" dir="-1 -1 -1" castshadow="false" />',
+        '    <!-- Modern data center lighting (bright, even illumination) -->',
+        '    <light directional="true" diffuse="1.4 1.4 1.45" specular="0.4 0.4 0.4" pos="0 0 8" dir="0 0 -1" castshadow="false" />',
+        '    <light directional="true" diffuse="0.8 0.8 0.82" specular="0.2 0.2 0.2" pos="15 12.5 6" dir="0 0 -1" castshadow="false" />',
+        '    <light directional="true" diffuse="0.5 0.5 0.52" specular="0.1 0.1 0.1" pos="-5 20 5" dir="1 -1 -1" castshadow="false" />',
         '',
         f'    <!-- Floor -->',
         f'    <geom type="plane" size="{floor_width} {floor_depth} 0.1" material="matplane" />',
@@ -192,10 +205,10 @@ def build_complex_scene_xml(
         '',
     ]
 
-    # Add dynamic objects
-    xml_parts.append('    <!-- Dynamic Objects -->')
-    for obj in dynamic_objects:
-        xml_parts.append(build_dynamic_object_xml(obj))
+    # Add static objects (server racks, cooling units)
+    xml_parts.append('    <!-- Static Objects (Bolted Equipment) -->')
+    for obj in static_objects:
+        xml_parts.append(build_static_object_xml(obj))
 
     # Add moving robots
     xml_parts.append('    <!-- Moving Robots -->')
@@ -226,8 +239,14 @@ def generate_complex_data_center(
     num_racks: int = 24,
     num_robots: int = 2,
     seed: int = 0,
-) -> Tuple[List[DynamicObjectSpec], List[MovingRobotSpec], List[ContinuousSoundSpec]]:
-    """Generate complex data center with dynamic physics and moving robots.
+) -> Tuple[List[StaticObjectSpec], List[MovingRobotSpec], List[ContinuousSoundSpec]]:
+    """Generate modern data center with static racks and moving robots.
+
+    Creates a realistic data center where:
+    - Server racks are bolted to raised floor (static, can't fall)
+    - Cooling units are mounted (static)
+    - Robots can move freely
+    - Equipment emits realistic sounds
 
     Args:
         room_size: (width, depth, height) in meters
@@ -236,23 +255,24 @@ def generate_complex_data_center(
         seed: Random seed
 
     Returns:
-        Tuple of (dynamic_objects, moving_robots, continuous_sounds)
+        Tuple of (static_objects, moving_robots, continuous_sounds)
     """
     rng = np.random.default_rng(seed)
     room_width, room_depth, room_height = room_size
 
-    dynamic_objects = []
+    static_objects = []  # Changed from dynamic_objects
     moving_robots = []
     continuous_sounds = []
 
-    # Generate server racks in hot-aisle layout
+    # Generate server racks in hot-aisle/cold-aisle layout
+    # Modern data centers use alternating aisles for airflow efficiency
     racks_per_row = 6
     num_rows = (num_racks + racks_per_row - 1) // racks_per_row
 
     rack_x_start = 3.0
     rack_y_start = 3.0
-    rack_spacing_x = 2.2
-    rack_spacing_y = 3.0
+    rack_spacing_x = 2.2  # Standard 42U rack spacing
+    rack_spacing_y = 3.5  # Aisle width: 1.5m between rows
 
     for i in range(num_racks):
         row = i // racks_per_row
@@ -260,25 +280,22 @@ def generate_complex_data_center(
 
         x = rack_x_start + col * rack_spacing_x
         y = rack_y_start + row * rack_spacing_y
+        z = 1.0  # Racks sit on raised floor (no random height in real data centers)
 
-        # Add some randomness to height (racks at different elevations)
-        z = 1.0 + rng.uniform(-0.1, 0.1)
+        emits_sound = (i % 3 != 0)  # 2/3 of racks emit sound (active servers)
 
-        emits_sound = (i % 3 != 0)  # 2/3 of racks emit sound
-
-        rack = DynamicObjectSpec(
+        # Use StaticObjectSpec - racks are bolted to floor, can't fall over
+        rack = StaticObjectSpec(
             name=f"rack_{i+1}",
             object_type="server_rack",
             position=(x, y, z),
-            rotation=0.0,
-            size=(0.6, 1.0, 2.0),
+            rotation=0.0,  # All racks face same direction
+            size=(0.6, 1.0, 2.0),  # Standard 42U rack: 60cm wide, 100cm deep, 2m tall
             material="steel",
-            mass=200.0,
-            is_mobile=False,
             emits_continuous_sound=emits_sound,
         )
 
-        dynamic_objects.append(rack)
+        static_objects.append(rack)
 
         if emits_sound:
             sound = ContinuousSoundSpec(
@@ -294,26 +311,27 @@ def generate_complex_data_center(
             )
             continuous_sounds.append(sound)
 
-    # Add cooling units
+    # Add cooling units (CRAC - Computer Room Air Conditioning)
+    # Placed around perimeter in modern data centers
     cooling_positions = [
-        (5, room_depth - 3, 0.75),
-        (15, room_depth - 3, 0.75),
-        (25, room_depth - 3, 0.75),
-        (10, 2, 0.75),
+        (5, room_depth - 2, 0.75),   # Back wall
+        (15, room_depth - 2, 0.75),  # Back wall
+        (25, room_depth - 2, 0.75),  # Back wall
+        (room_width - 2, 10, 0.75),  # Side wall
     ]
 
     for i, pos in enumerate(cooling_positions):
-        cooling = DynamicObjectSpec(
+        # Use StaticObjectSpec - cooling units are mounted, can't fall
+        cooling = StaticObjectSpec(
             name=f"cooling_{i+1}",
             object_type="cooling_unit",
             position=pos,
             rotation=0.0,
-            size=(0.8, 0.8, 1.5),
+            size=(0.8, 0.8, 1.5),  # CRAC unit size
             material="steel",
-            mass=300.0,
             emits_continuous_sound=True,
         )
-        dynamic_objects.append(cooling)
+        static_objects.append(cooling)
 
         sound = ContinuousSoundSpec(
             source_id=f"cooling_{i+1}",
@@ -338,10 +356,10 @@ def generate_complex_data_center(
 
         robot = MovingRobotSpec(
             name=f"robot_{i+1}",
-            start_position=(start_x, start_y, 0.15),
-            end_position=(end_x, end_y, 0.15),
+            start_position=(start_x, start_y, 0.6),  # Higher for larger robot
+            end_position=(end_x, end_y, 0.6),
             speed=0.5,  # 0.5 m/s
-            mass=50.0,
+            mass=120.0,  # Match default mass
         )
         moving_robots.append(robot)
 
@@ -359,7 +377,7 @@ def generate_complex_data_center(
         )
         continuous_sounds.append(sound)
 
-    return dynamic_objects, moving_robots, continuous_sounds
+    return static_objects, moving_robots, continuous_sounds
 
 
 # Example usage

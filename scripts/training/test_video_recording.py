@@ -16,13 +16,14 @@ except Exception as e:
     print(f"   ✗ OpenCV error: {e}")
     sys.exit(1)
 
-# Test 2: Check available codecs
+# Test 2: Check available codecs (prioritize AVFoundation-compatible ones)
 print("\n2. Checking available codecs...")
+print("   OpenCV backend: AVFoundation (macOS native)")
 codecs_to_test = [
+    ('avc1', 'H.264 (AVC) - AVFoundation preferred'),
     ('mp4v', 'MP4V (MPEG-4)'),
-    ('avc1', 'H.264 (AVC)'),
-    ('XVID', 'XVID'),
     ('MJPG', 'Motion JPEG'),
+    ('XVID', 'XVID'),
 ]
 
 working_codec = None
@@ -45,19 +46,37 @@ print(f"\n   → Will use: {working_codec}")
 print("\n3. Creating test video...")
 output_dir = Path("outputs/video_test")
 output_dir.mkdir(parents=True, exist_ok=True)
-test_video_path = output_dir / "test_video.mp4"
+
+# Try both .mp4 and .mov (AVFoundation may prefer .mov)
+extensions_to_try = ['.mp4', '.mov']
+test_video_path = None
+out = None
+
+for ext in extensions_to_try:
+    try_path = output_dir / f"test_video{ext}"
+    print(f"   Trying {working_codec} with {ext}...")
+
+    fourcc = cv2.VideoWriter_fourcc(*working_codec)
+    temp_out = cv2.VideoWriter(str(try_path), fourcc, 10, (480, 480))
+
+    if temp_out.isOpened():
+        print(f"   ✓ VideoWriter opened successfully with {ext}")
+        test_video_path = try_path
+        out = temp_out
+        break
+    else:
+        print(f"   ✗ Failed with {ext}, trying next...")
+        temp_out.release()
+
+if out is None or not out.isOpened():
+    print(f"\n   ✗ Failed to open VideoWriter with any extension")
+    print(f"   This may be an AVFoundation/OpenCV compatibility issue")
+    print(f"   Suggestion: Install opencv-python with FFmpeg support:")
+    print(f"     pip uninstall opencv-python")
+    print(f"     pip install opencv-contrib-python")
+    sys.exit(1)
 
 try:
-    # Create video writer
-    fourcc = cv2.VideoWriter_fourcc(*working_codec)
-    out = cv2.VideoWriter(str(test_video_path), fourcc, 10, (480, 480))
-
-    if not out.isOpened():
-        print(f"   ✗ Failed to open VideoWriter")
-        sys.exit(1)
-
-    print(f"   ✓ VideoWriter opened successfully")
-
     # Generate 30 test frames (colorful gradient)
     print("   Generating 30 frames...")
     for i in range(30):

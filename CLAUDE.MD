@@ -74,6 +74,8 @@ claude-local
 
 ## Directory Structure
 
+**Important**: All Python files must be in `physonic/` (library code) or `scripts/` (executables). **No Python files at project root.**
+
 ```
 physonic/
 ├── __init__.py
@@ -120,15 +122,40 @@ physonic/
 │   ├── selective_response.py # SelectiveResponseEnv (binary respond/ignore)
 │   ├── preprocessing.py     # extract_mel_spectrogram()
 │   └── rewards.py           # Reward functions
-├── visualization/            # Demo and visualization tools - NEW
-│   ├── __init__.py
-│   ├── recorder.py          # Episode recording (Gymnasium/HF compatible)
-│   ├── plots.py             # Visualization utilities (waveforms, spectrograms, metrics)
-│   └── (future: viewer.py for interactive playback)
+└── visualization/            # Demo and visualization tools
+    ├── __init__.py
+    ├── recorder.py          # Episode recording (Gymnasium/HF compatible)
+    └── plots.py             # Visualization utilities (waveforms, spectrograms, metrics)
+
+scripts/                      # Executable scripts (organized by category)
+├── baselines/               # Baseline agents for RL environments (5 scripts)
+│   ├── baseline_localization.py     # Random/perfect agents for localization
+│   ├── baseline_classification.py   # Random/heuristic agents for classification
+│   ├── baseline_selective.py        # Random/always/never agents for selective response
+│   ├── baseline_pytorch_localization.py  # PyTorch REINFORCE for localization
+│   └── baseline_pytorch_selective.py     # PyTorch REINFORCE for selective response
+├── demos/                   # Interactive demos (3 scripts)
+│   ├── demo_rl_env.py              # RL environment demo (all 3 tasks)
+│   ├── demo_environment_gen.py     # Procedural environment generation
+│   └── generate_data_center_layouts.py  # Batch layout generation
+├── training/                # PPO training infrastructure (5 scripts)
+│   ├── train_ppo_data_center.py    # PPO agent training with video recording
+│   ├── video_recorder_callback.py  # Evaluation video recording callback
+│   ├── training_monitor_callback.py # Training rollout video callback
+│   └── test_video_recording.py     # Video codec diagnostic tool
+├── visualization/           # Visualization tools (2 scripts)
+│   ├── view_environment.py         # 3D environment viewer
+│   └── visualize_audio_observation.py  # Audio perception visualization
+├── utils/                   # Utility scripts (2 scripts)
+│   ├── setup_hrtf_test.py         # HRTF test dataset setup
+│   └── organize_outputs.py        # Output organization tool
+└── examples/                # Basic examples (1 script)
+    └── example.py                  # Basic usage example
+
+# Legacy scripts (still in physonic/ for backward compatibility)
+physonic/
 ├── run_demo.py              # Main CLI: single-object scenarios with spatial + reverb
 ├── run_demo_multi.py        # Multi-object scenarios CLI
-├── demo_rl_env.py           # Interactive RL environment demo - NEW
-├── demo_environment_gen.py  # Environment generation demo - NEW
 ├── export_dataset.py        # Dataset export CLI
 ├── render_video.py          # Video rendering CLI (standalone, post-hoc from telemetry)
 └── verify.py                # Output validation & spectrogram generation
@@ -805,6 +832,76 @@ Outputs per clip:
 - 🔄 HuggingFace datasets (export stub ready)
 - 🔄 Isaac Sim USD (export stub ready for future integration)
 
+### ✅ Recent Updates (2026-10-13)
+
+**Project Organization** (Complete):
+- ✅ Reorganized all Python scripts from root into `scripts/` subdirectories
+- ✅ Created organized structure: baselines/, demos/, training/, visualization/, utils/, examples/
+- ✅ Updated README.md with new script paths and Example 11 (PPO training)
+- ✅ Created scripts/README.md with comprehensive organization policy
+- ✅ Verified: No Python files at project root (clean structure)
+
+**PPO Training Infrastructure** (Complete):
+- ✅ `scripts/training/train_ppo_data_center.py`: Full PPO training with video recording
+  - 3 types of video recording: evaluation videos, training rollouts, real-time viewer
+  - Supports both parallel (SubprocVecEnv) and single (DummyVecEnv) environments
+  - Automatic warnings when features require n-envs=1
+  - TensorBoard logging and checkpoint saving
+- ✅ `scripts/training/video_recorder_callback.py`: Evaluation episode videos
+  - Records deterministic policy performance at regular intervals
+  - 480×480 resolution @ 10fps with H.264 encoding
+  - Overlays: step count, reward, distance to goal
+- ✅ `scripts/training/training_monitor_callback.py`: Training rollout videos
+  - Records actual training (stochastic policy with exploration)
+  - Shows what the agent is actually learning during training
+  - Optional real-time viewer (very slow, debugging only)
+
+**Video Recording Codec Fix** (Complete):
+- ✅ **Problem**: Videos not being created on macOS despite success messages
+- ✅ **Root Cause**: OpenCV built with AVFoundation (not FFmpeg), 'mp4v' codec incompatible
+- ✅ **Solution**: Changed codec from 'mp4v' to 'avc1' (H.264) in both callbacks
+- ✅ **Verification**: Created test diagnostic tool (`test_video_recording.py`)
+- ✅ **Result**: Videos now created successfully (verified with ffprobe)
+- ✅ **Documentation**: Full details in `VIDEO_RECORDING_CODEC_FIX.md`
+
+**Audio Perception Visualization** (Complete):
+- ✅ `scripts/visualization/visualize_audio_observation.py`: Shows how agents perceive audio
+  - Compares raw waveform (44,100 samples) vs mel-spectrogram (6,400 features)
+  - Visualizes binaural encoding (left/right channels for ITD/ILD)
+  - Generates PPO architecture diagram (6,406 input features → 256 → 2 actions)
+  - Outputs: `audio_perception_visualization.png`, `ppo_architecture_diagram.png`
+- ✅ `AUDIO_AND_VIDEO_GUIDE.md`: Comprehensive guide explaining:
+  - How agents process audio (mel-spectrograms as 2D "photographs of sound")
+  - Three video recording options (evaluation, training, real-time)
+  - Performance impact analysis
+
+**Training Configuration**:
+```bash
+# Full training with all features (requires n-envs=1 for training videos)
+PYTHONPATH=/Users/macbook/Desktop/rightsify/physonic_mvp \
+python3 scripts/training/train_ppo_data_center.py \
+  --total-timesteps 100000 \
+  --n-envs 1 \
+  --record-video \
+  --monitor-training \
+  --video-freq 10000 \
+  --monitor-freq 5000
+
+# Parallel training with evaluation videos only (faster)
+PYTHONPATH=/Users/macbook/Desktop/rightsify/physonic_mvp \
+python3 scripts/training/train_ppo_data_center.py \
+  --total-timesteps 100000 \
+  --n-envs 4 \
+  --record-video \
+  --video-freq 10000
+```
+
+**Output Directories**:
+- `outputs/ppo_datacenter/models/`: Saved models (checkpoints + best + final)
+- `outputs/ppo_datacenter/logs/`: TensorBoard logs
+- `outputs/ppo_datacenter/eval_videos/`: Evaluation episode videos (deterministic)
+- `outputs/ppo_datacenter/training_videos/`: Training rollout videos (stochastic)
+
 ### Technical Debt to Address
 - Fine-tune Schroeder RT60 decay calibration
 - Replace material approximations with mesh-derived modal data
@@ -812,3 +909,4 @@ Outputs per clip:
 - VBAP or spherical harmonics for smoother HRTF interpolation
 - USD/Omniverse export for NVIDIA Isaac Sim integration
 - WebSocket/gRPC streaming for online RL training
+- Implement real audio rendering in data center navigation environment (currently using placeholder zeros)
