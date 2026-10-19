@@ -6,9 +6,9 @@
 
 **Physonic** generates realistic acoustic training data for robot perception systems by simulating physics-based contact sounds. It combines MuJoCo rigid-body dynamics with modal synthesis to produce synchronized audio, physics state, and ground truth labels—ideal for training robots to understand their environment through sound.
 
-https://github.com/ageraustine/physonic/assets/training_rollout_00001000_steps.mp4
+![Demo Video](assets/training_rollout_00001000_steps.gif)
 
-*Example: Multi-object collision with binaural spatial audio and room acoustics*
+*Example: PPO agent for data center navigation with acoustic perception*
 
 ## Why Physonic?
 
