@@ -53,7 +53,7 @@ dmypy.json
 outputs/
 *.wav
 *.flac
-*.mp4
+# *.mp4
 *.png
 *.jpg
 *.npz
