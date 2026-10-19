@@ -151,7 +151,7 @@ class DataCenterNavigationEnv(gym.Env):
             ),
             "state": gym.spaces.Box(
                 low=-np.inf, high=np.inf,
-                shape=(6,),  # x, y, z, vx, vy, heading
+                shape=(8,),  # x, y, z, vx, vy, heading, distance_to_goal, goal_direction
                 dtype=np.float32
             ),
         })
@@ -236,7 +236,13 @@ class DataCenterNavigationEnv(gym.Env):
         """Get current robot state.
 
         Returns:
-            Array [x, y, z, vx, vy, heading]
+            Array [x, y, z, vx, vy, heading, distance_to_goal, goal_direction]
+
+        The goal_direction is relative to robot heading:
+        - 0 = goal is straight ahead
+        - +π/2 = goal is to the left
+        - -π/2 = goal is to the right
+        - ±π = goal is behind
         """
         pos = self.data.xpos[self.robot_body_id].copy()
         vel = self.data.cvel[self.robot_body_id][:3].copy()  # Linear velocity
@@ -247,7 +253,29 @@ class DataCenterNavigationEnv(gym.Env):
         heading = np.arctan2(2 * (quat[0] * quat[3] + quat[1] * quat[2]),
                             1 - 2 * (quat[2]**2 + quat[3]**2))
 
-        return np.array([pos[0], pos[1], pos[2], vel[0], vel[1], heading], dtype=np.float32)
+        # Distance to goal (normalized to [0, 1] range, clipped at 20m)
+        if self.goal_position is not None:
+            distance = np.linalg.norm(pos[:2] - self.goal_position[:2])
+            distance_normalized = min(distance / 20.0, 1.0)  # Normalize to [0, 1]
+
+            # Goal direction relative to robot heading
+            # This tells the robot which way to turn
+            goal_vec = self.goal_position[:2] - pos[:2]
+            goal_angle_world = np.arctan2(goal_vec[1], goal_vec[0])
+            goal_direction = goal_angle_world - heading
+            # Wrap to [-π, π]
+            goal_direction = np.arctan2(np.sin(goal_direction), np.cos(goal_direction))
+        else:
+            distance_normalized = 1.0
+            goal_direction = 0.0
+
+        return np.array([
+            pos[0], pos[1], pos[2],
+            vel[0], vel[1],
+            heading,
+            distance_normalized,  # 0 = at goal, 1 = far away
+            goal_direction,       # Relative angle to goal
+        ], dtype=np.float32)
 
     def _generate_audio_observation(self) -> np.ndarray:
         """Generate audio observation from current state.

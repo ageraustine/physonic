@@ -529,7 +529,7 @@ class RealTimeViewer(BaseCallback):
     def __init__(
         self,
         update_freq: int = 10,  # Update display every 10 steps
-        window_name: str = "PPO Training - Real-Time View",
+        window_name: str = "RL Training - Real-Time View",
         verbose: int = 0,
     ):
         """Initialize real-time viewer.

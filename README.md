@@ -6,7 +6,7 @@
 
 **Physonic** generates realistic acoustic training data for robot perception systems by simulating physics-based contact sounds. It combines MuJoCo rigid-body dynamics with modal synthesis to produce synchronized audio, physics state, and ground truth labels—ideal for training robots to understand their environment through sound.
 
-https://github.com/gcxrightsify/physonic/assets/assets/training_rollout_00001000_steps.mp4
+https://github.com/ageraustine/physonic/assets/assets/training_rollout_00001000_steps.mp4
 
 *Example: Multi-object collision with binaural spatial audio and room acoustics*
 
@@ -378,7 +378,7 @@ See `test_usd_export.py` for a complete example.
 ### Quick Install
 ```bash
 # Clone repository
-git clone https://github.com/gcxrightsify/physonic.git
+git clone https://github.com/ageraustine/physonic.git
 cd physonic
 
 # Create virtual environment
@@ -733,10 +733,10 @@ from datasets import load_dataset
 dataset = load_dataset('parquet', data_dir='datasets/physonic_v1/data')
 
 # Or push to Hugging Face Hub
-dataset.push_to_hub('gcxrightsify/physonic-warehouse-v1')
+dataset.push_to_hub('ageraustine/physonic-warehouse-v1')
 
 # Later, load from Hub
-dataset = load_dataset('gcxrightsify/physonic-warehouse-v1')
+dataset = load_dataset('ageraustine/physonic-warehouse-v1')
 ```
 
 ### Example 8: Interactive RL Environment Demo
@@ -1315,7 +1315,7 @@ If you use Physonic in your research, please cite:
   title = {Physonic: Physics-Driven Acoustic Synthesis for Robot Perception},
   author = {Ager Austen},
   year = {2025},
-  url = {https://github.com/gcxrightsify/physonic},
+  url = {https://github.com/ageraustine/physonic},
   note = {Version 1.0}
 }
 ```
@@ -1331,7 +1331,7 @@ Contributions are welcome! Areas of interest:
 - **Environments**: Implement procedural scene generation
 - **RL Tasks**: Design acoustic perception benchmarks
 
-Please open an issue or pull request on [GitHub](https://github.com/gcxrightsify/physonic).
+Please open an issue or pull request on [GitHub](https://github.com/ageraustine/physonic).
 
 ---
 
@@ -1354,8 +1354,8 @@ MIT License - see [LICENSE](LICENSE) for details.
 ## Support
 
 - **Documentation**: See [CLAUDE.md](CLAUDE.md) for detailed architecture and development guide
-- **Issues**: [GitHub Issues](https://github.com/gcxrightsify/physonic/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/gcxrightsify/physonic/discussions)
+- **Issues**: [GitHub Issues](https://github.com/ageraustine/physonic/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/ageraustine/physonic/discussions)
 
 ---
 

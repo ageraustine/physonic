@@ -152,8 +152,9 @@ class UltrasonicSensorArray:
         Returns:
             Distance to intersection, or None if no hit
         """
-        # Avoid division by zero
-        inv_dir = np.where(np.abs(direction) < 1e-8, 1e8, 1.0 / direction)
+        # Avoid division by zero - use safe division to suppress warnings
+        safe_dir = np.where(np.abs(direction) < 1e-8, 1.0, direction)
+        inv_dir = np.where(np.abs(direction) < 1e-8, 1e8, 1.0 / safe_dir)
 
         t1 = (bbox_min - origin) * inv_dir
         t2 = (bbox_max - origin) * inv_dir

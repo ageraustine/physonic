@@ -25,18 +25,17 @@ Usage:
 """
 
 import argparse
-import os
 from pathlib import Path
-import numpy as np
 import torch
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
-from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize, VecFrameStack
+from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback, BaseCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
 
 from physonic.envs.data_center_nav import DataCenterNavigationEnv
+from physonic.envs.feature_extractors import AudioCNNExtractor, AudioAttentionExtractor
 
 # Environment scale configurations
 ENV_SCALES = {
@@ -72,6 +71,25 @@ try:
 except ImportError:
     VIDEO_AVAILABLE = False
     print("Warning: video callbacks not found, video recording disabled")
+
+class SyncVecNormalizeCallback(BaseCallback):
+    """Sync VecNormalize statistics from training to evaluation."""
+
+    def __init__(
+        self,
+        train_vec_normalize: VecNormalize,
+        eval_vec_normalize: VecNormalize,
+        verbose: int = 0,
+    ):
+        super().__init__(verbose)
+        self.train_vec_normalize = train_vec_normalize
+        self.eval_vec_normalize = eval_vec_normalize
+
+    def _on_step(self) -> bool:
+        """Keep evaluation normalization statistics synchronized."""
+        self.eval_vec_normalize.obs_rms = self.train_vec_normalize.obs_rms
+        self.eval_vec_normalize.ret_rms = self.train_vec_normalize.ret_rms
+        return True
 
 
 def make_env(rank: int, seed: int = 0, env_scale: str = "basic"):
@@ -120,6 +138,10 @@ def train_ppo(
     monitor_training: bool = False,
     monitor_freq: int = 10000,
     show_window: bool = False,
+    # Architecture settings (NEW)
+    feature_extractor: str = "cnn",
+    frame_stack: int = 1,
+    audio_features: int = 128,
 ):
     """Train PPO agent on data center navigation.
 
@@ -142,6 +164,9 @@ def train_ppo(
         monitor_training: Whether to record training rollout videos
         monitor_freq: Training video recording frequency
         show_window: Show live window during training (VERY SLOW)
+        feature_extractor: Feature extractor type ("cnn", "attention", or "mlp")
+        frame_stack: Number of frames to stack for memory (0=disabled)
+        audio_features: Number of audio feature dimensions
     """
     # Create output directories
     output_path = Path(output_dir)
@@ -184,12 +209,58 @@ def train_ppo(
     eval_env = DummyVecEnv([make_env(100, seed, env_scale)])
     print("Evaluation environment: DummyVecEnv (required for video recording)")
 
+    # Apply frame stacking for memory (POMDP handling)
+    if frame_stack > 1:
+        print(f"\nApplying frame stacking ({frame_stack} frames)...")
+        env = VecFrameStack(env, n_stack=frame_stack)
+        eval_env = VecFrameStack(eval_env, n_stack=frame_stack)
+        print(f"✓ Frame stacking enabled (provides temporal memory)")
+
+    # IMPORTANT: Normalize observations for better learning
+    # Audio codes [0-2047], ultrasonic [0-5], state (mixed scales) → all normalized to ~[-1, 1]
+    print()
+    print("Wrapping environments with VecNormalize...")
+    env = VecNormalize(
+        env,
+        norm_obs=True,       # Normalize observations (critical for mixed-scale inputs)
+        norm_reward=False,   # Don't normalize rewards (already well-scaled with progress-based)
+        clip_obs=10.0,       # Clip normalized obs to [-10, 10]
+        clip_reward=10.0,    # Safety clip for rewards
+        gamma=0.99,          # Discount factor for reward normalization
+    )
+
+    # Wrap eval env too (but don't update stats during evaluation)
+    eval_env = VecNormalize(
+        eval_env,
+        norm_obs=True,
+        norm_reward=False,
+        clip_obs=10.0,
+        clip_reward=10.0,
+        gamma=0.99,
+        training=False,      # Don't update running stats during eval
+    )
+    print("✓ Observation normalization enabled")
+    print("  - Audio codes, ultrasonic, state → normalized to ~[-1, 1]")
+    print("  - Rewards NOT normalized (already well-scaled)")
+
+    print()
     print(f"Environment: {env.observation_space}")
     print(f"Action space: {env.action_space}")
     print()
 
-    # Configure PPO
-    print("Configuring PPO agent...")
+    # Configure PPO with custom feature extractor
+    print("Configuring PPO agent with custom architecture...")
+
+    # Select feature extractor class
+    if feature_extractor == "cnn":
+        extractor_class = AudioCNNExtractor
+        extractor_name = "AudioCNN"
+    elif feature_extractor == "attention":
+        extractor_class = AudioAttentionExtractor
+        extractor_name = "AudioAttention"
+    else:
+        extractor_class = None  # Use default MLP
+        extractor_name = "MLP (default)"
 
     # Policy kwargs for handling Dict observations
     policy_kwargs = dict(
@@ -199,6 +270,15 @@ def train_ppo(
         ),
         activation_fn=torch.nn.ReLU,
     )
+
+    # Add custom feature extractor if not MLP
+    if extractor_class is not None:
+        policy_kwargs["features_extractor_class"] = extractor_class
+        policy_kwargs["features_extractor_kwargs"] = dict(
+            audio_features=audio_features,
+            ultrasonic_features=32,
+            state_features=32,
+        )
 
     model = PPO(
         "MultiInputPolicy",  # For Dict observation space
@@ -220,11 +300,19 @@ def train_ppo(
         tensorboard_log=str(output_path / "logs"),
     )
 
-    print(f"Model: {model.policy}")
+    total_features = audio_features + 32 + 32  # audio + ultrasonic + state
+    print(f"✓ PPO model initialized")
+    print(f"  ├─ Feature extractor: {extractor_name}")
+    print(f"  │   └─ Output: {total_features} features")
+    print(f"  ├─ Actor: 2 hidden layers (256 units)")
+    print(f"  └─ Critic: 2 hidden layers (256 units)")
     print()
 
     # Setup callbacks
     print("Setting up callbacks...")
+
+    # Sync normalization stats from training to eval (critical for VecNormalize)
+    sync_callback = SyncVecNormalizeCallback(env, eval_env, verbose=0)
 
     # Evaluation callback
     eval_callback = EvalCallback(
@@ -244,10 +332,10 @@ def train_ppo(
         save_path=str(output_path / "models"),
         name_prefix="ppo_datacenter",
         save_replay_buffer=False,
-        save_vecnormalize=True,
+        save_vecnormalize=True,  # Save normalization stats with model
     )
 
-    callbacks = [eval_callback, checkpoint_callback]
+    callbacks = [sync_callback, eval_callback, checkpoint_callback]
 
     # Video recording callback for EVALUATION episodes (optional)
     if record_video and VIDEO_AVAILABLE:
@@ -478,6 +566,15 @@ Examples:
     parser.add_argument("--show-window", action="store_true",
                        help="Show live window during training (VERY SLOW!)")
 
+    # Architecture settings (NEW)
+    parser.add_argument("--feature-extractor", type=str, default="cnn",
+                       choices=["cnn", "attention", "mlp"],
+                       help="Feature extractor type: cnn (recommended), attention, or mlp (default: cnn)")
+    parser.add_argument("--frame-stack", type=int, default=1,
+                       help="Number of frames to stack for memory (default: 1=disabled, use with --feature-extractor mlp)")
+    parser.add_argument("--audio-features", type=int, default=128,
+                       help="Audio feature dimensions (default: 128)")
+
     args = parser.parse_args()
 
     if args.eval_only:
@@ -510,6 +607,10 @@ Examples:
             monitor_training=args.monitor_training,
             monitor_freq=args.monitor_freq,
             show_window=args.show_window,
+            # Architecture settings
+            feature_extractor=args.feature_extractor,
+            frame_stack=args.frame_stack,
+            audio_features=args.audio_features,
         )
 
 
